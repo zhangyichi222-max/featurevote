@@ -1,6 +1,0 @@
-{
-  "last_turn_at": "2026-04-20T03:00:13.487Z",
-  "turn_count": 7,
-  "last_progress_at": "2026-04-20T03:00:13.487Z",
-  "last_agent_output": "`Roadmap` 页已经加上了，而且现在和需求列表是同一份数据源，改动会同步到后端状态。\n\n这次主要做了几件事：\n- 把状态模型从 3 个扩成了 5 个：`backlog / approved / "
-}
