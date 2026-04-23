@@ -1,230 +1,124 @@
-import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
-from threading import Lock
 from uuid import uuid4
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.requirement import RequirementModel, VoteModel
 from app.schemas.requirement import RequirementCreate, RequirementItem, VoteCreate
 
 
 class RequirementsRepository:
-    def __init__(self, db_path: str) -> None:
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = Lock()
-        self._initialize()
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
     async def list_requirements(self) -> list[RequirementItem]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT id, req_id, title, description, status, vote_count,
-                       creator_name, creator_open_id, created_at, updated_at
-                FROM requirements
-                ORDER BY created_at DESC
-                """
-            ).fetchall()
+        records = self.session.scalars(
+            select(RequirementModel).order_by(RequirementModel.created_at.desc())
+        ).all()
+        return [self._to_requirement_item(record) for record in records]
 
-        return [
-            RequirementItem(
-                id=row["id"],
-                req_id=row["req_id"],
-                title=row["title"],
-                description=row["description"],
-                status=row["status"],
-                vote_count=row["vote_count"],
-                creator_name=row["creator_name"],
-                creator_open_id=row["creator_open_id"],
-                created_at=_parse_datetime(row["created_at"]),
-                updated_at=_parse_datetime(row["updated_at"]),
-            )
-            for row in rows
-        ]
+    async def get_requirement_by_id(self, record_id: str) -> RequirementItem | None:
+        record = self.session.get(RequirementModel, record_id)
+        if record is None:
+            return None
+        return self._to_requirement_item(record)
 
     async def create_requirement(self, payload: RequirementCreate) -> dict:
-        now = _utc_now_isoformat()
-        record_id = uuid4().hex
-        req_id = f"REQ-{uuid4().hex[:8].upper()}"
-
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO requirements (
-                    id, req_id, title, description, status, vote_count,
-                    creator_name, creator_open_id, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record_id,
-                    req_id,
-                    payload.title,
-                    payload.description,
-                    "backlog",
-                    0,
-                    payload.creator_name,
-                    payload.creator_open_id,
-                    now,
-                    now,
-                ),
-            )
-            connection.commit()
-
-        return {
-            "record_id": record_id,
-            "fields": {
-                "req_id": req_id,
-                "title": payload.title,
-                "description": payload.description,
-                "status": "backlog",
-                "vote_count": 0,
-                "creator_name": payload.creator_name,
-                "creator_open_id": payload.creator_open_id,
-                "created_at": now,
-                "updated_at": now,
-            },
-        }
+        now = _utc_now()
+        record = RequirementModel(
+            id=uuid4().hex,
+            req_id=f"REQ-{uuid4().hex[:8].upper()}",
+            title=payload.title,
+            description=payload.description,
+            status="backlog",
+            vote_count=0,
+            creator_name=payload.creator_name,
+            creator_open_id=payload.creator_open_id,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return self._requirement_result(record)
 
     async def create_vote(self, requirement_id: str, payload: VoteCreate) -> dict:
-        vote_id = uuid4().hex
-        created_at = _utc_now_isoformat()
+        record = VoteModel(
+            id=uuid4().hex,
+            requirement_id=requirement_id,
+            voter_open_id=payload.voter_open_id,
+            voter_name=payload.voter_name,
+            created_at=_utc_now(),
+        )
+        self.session.add(record)
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            raise
 
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO votes (id, requirement_id, voter_open_id, voter_name, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    vote_id,
-                    requirement_id,
-                    payload.voter_open_id,
-                    payload.voter_name,
-                    created_at,
-                ),
-            )
-            connection.commit()
-
+        self.session.refresh(record)
         return {
-            "record_id": vote_id,
+            "record_id": record.id,
             "fields": {
-                "requirement_id": requirement_id,
-                "voter_open_id": payload.voter_open_id,
-                "voter_name": payload.voter_name,
-                "created_at": created_at,
+                "requirement_id": record.requirement_id,
+                "voter_open_id": record.voter_open_id,
+                "voter_name": record.voter_name,
+                "created_at": record.created_at.isoformat(),
             },
         }
 
-    async def list_votes(self) -> list[dict]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT id, requirement_id, voter_open_id, voter_name, created_at
-                FROM votes
-                ORDER BY created_at DESC
-                """
-            ).fetchall()
-
-        return [
-            {
-                "record_id": row["id"],
-                "fields": {
-                    "requirement_id": row["requirement_id"],
-                    "voter_open_id": row["voter_open_id"],
-                    "voter_name": row["voter_name"],
-                    "created_at": row["created_at"],
-                },
-            }
-            for row in rows
-        ]
+    async def has_vote(self, requirement_id: str, voter_open_id: str) -> bool:
+        record = self.session.scalar(
+            select(VoteModel).where(
+                VoteModel.requirement_id == requirement_id,
+                VoteModel.voter_open_id == voter_open_id,
+            )
+        )
+        return record is not None
 
     async def update_requirement(self, record_id: str, fields: dict) -> dict:
-        allowed_fields = {"status", "vote_count"}
-        updates = {key: value for key, value in fields.items() if key in allowed_fields}
-        updates["updated_at"] = _utc_now_isoformat()
+        record = self.session.get(RequirementModel, record_id)
+        for key, value in fields.items():
+            setattr(record, key, value)
+        record.updated_at = _utc_now()
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return self._requirement_result(record)
 
-        assignments = ", ".join(f"{column} = ?" for column in updates)
-        parameters = [*updates.values(), record_id]
+    def _to_requirement_item(self, record: RequirementModel) -> RequirementItem:
+        return RequirementItem(
+            id=record.id,
+            req_id=record.req_id,
+            title=record.title,
+            description=record.description,
+            status=record.status,
+            vote_count=record.vote_count,
+            creator_name=record.creator_name,
+            creator_open_id=record.creator_open_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
 
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                f"""
-                UPDATE requirements
-                SET {assignments}
-                WHERE id = ?
-                """,
-                parameters,
-            )
-            row = connection.execute(
-                """
-                SELECT id, req_id, title, description, status, vote_count,
-                       creator_name, creator_open_id, created_at, updated_at
-                FROM requirements
-                WHERE id = ?
-                """,
-                (record_id,),
-            ).fetchone()
-            connection.commit()
-
+    def _requirement_result(self, record: RequirementModel) -> dict:
         return {
-            "record_id": row["id"],
+            "record_id": record.id,
             "fields": {
-                "req_id": row["req_id"],
-                "title": row["title"],
-                "description": row["description"],
-                "status": row["status"],
-                "vote_count": row["vote_count"],
-                "creator_name": row["creator_name"],
-                "creator_open_id": row["creator_open_id"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
+                "req_id": record.req_id,
+                "title": record.title,
+                "description": record.description,
+                "status": record.status,
+                "vote_count": record.vote_count,
+                "creator_name": record.creator_name,
+                "creator_open_id": record.creator_open_id,
+                "created_at": record.created_at.isoformat(),
+                "updated_at": record.updated_at.isoformat(),
             },
         }
 
-    def _initialize(self) -> None:
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS requirements (
-                    id TEXT PRIMARY KEY,
-                    req_id TEXT NOT NULL UNIQUE,
-                    title TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    vote_count INTEGER NOT NULL DEFAULT 0,
-                    creator_name TEXT NOT NULL,
-                    creator_open_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS votes (
-                    id TEXT PRIMARY KEY,
-                    requirement_id TEXT NOT NULL,
-                    voter_open_id TEXT NOT NULL,
-                    voter_name TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    UNIQUE(requirement_id, voter_open_id),
-                    FOREIGN KEY(requirement_id) REFERENCES requirements(id)
-                )
-                """
-            )
-            connection.commit()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path, check_same_thread=False)
-        connection.row_factory = sqlite3.Row
-        return connection
-
-
-def _utc_now_isoformat() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_datetime(value: str | None) -> datetime:
-    if not value:
-        return datetime.now(timezone.utc)
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)

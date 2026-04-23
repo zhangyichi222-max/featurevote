@@ -9,7 +9,11 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:5173"]
-    sqlite_db_path: str = "data/featurevote.db"
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_user: str = "root"
+    mysql_password: str = ""
+    mysql_database: str = "featurevote"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

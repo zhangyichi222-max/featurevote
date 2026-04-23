@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.deps import repository
+from app import models  # noqa: F401
 from app.api.routes.requirements import router as requirements_router
 from app.core.config import settings
+from app.db.base import Base
+from app.db.session import engine
 
 
 app = FastAPI(title=settings.app_name)
@@ -26,4 +28,4 @@ async def healthcheck() -> dict[str, str]:
 
 @app.on_event("startup")
 async def startup() -> None:
-    repository._initialize()
+    Base.metadata.create_all(bind=engine)
