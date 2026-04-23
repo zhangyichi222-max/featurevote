@@ -19,6 +19,11 @@ class VoteCreate(BaseModel):
     voter_open_id: str
 
 
+class CommentCreate(BaseModel):
+    author_name: str = Field(default="Anonymous", max_length=255)
+    body: str = Field(min_length=1, max_length=5000)
+
+
 class StatusUpdate(BaseModel):
     status: RequirementStatus
 
@@ -38,6 +43,18 @@ class RequirementItem(BaseModel):
 
 class RequirementListResponse(BaseModel):
     items: list[RequirementItem]
+
+
+class CommentItem(BaseModel):
+    id: str
+    requirement_id: str
+    author_name: str
+    body: str
+    created_at: datetime
+
+
+class CommentListResponse(BaseModel):
+    items: list[CommentItem]
 
 
 class ActionResult(BaseModel):

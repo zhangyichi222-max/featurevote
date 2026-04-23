@@ -28,6 +28,11 @@ class RequirementModel(Base):
         back_populates="requirement",
         cascade="all, delete-orphan",
     )
+    comments: Mapped[list["CommentModel"]] = relationship(
+        back_populates="requirement",
+        cascade="all, delete-orphan",
+        order_by="CommentModel.created_at",
+    )
 
 
 class VoteModel(Base):
@@ -47,3 +52,19 @@ class VoteModel(Base):
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
 
     requirement: Mapped[RequirementModel] = relationship(back_populates="votes")
+
+
+class CommentModel(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    requirement_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("requirements.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    author_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    requirement: Mapped[RequirementModel] = relationship(back_populates="comments")

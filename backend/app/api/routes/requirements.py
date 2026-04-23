@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_requirements_service
 from app.schemas.requirement import (
     ActionResult,
+    CommentCreate,
+    CommentListResponse,
     RequirementCreate,
     RequirementListResponse,
     StatusUpdate,
@@ -28,6 +30,24 @@ async def create_requirement(
 ) -> ActionResult:
     await service.create_requirement(payload)
     return ActionResult(message="Requirement created successfully.")
+
+
+@router.get("/{requirement_id}/comments", response_model=CommentListResponse)
+async def list_comments(
+    requirement_id: str,
+    service: RequirementsService = Depends(get_requirements_service),
+) -> CommentListResponse:
+    return await service.list_comments(requirement_id)
+
+
+@router.post("/{requirement_id}/comments", response_model=ActionResult)
+async def create_comment(
+    requirement_id: str,
+    payload: CommentCreate,
+    service: RequirementsService = Depends(get_requirements_service),
+) -> ActionResult:
+    await service.create_comment(requirement_id, payload)
+    return ActionResult(message="Comment added successfully.")
 
 
 @router.post("/{requirement_id}/vote", response_model=ActionResult)

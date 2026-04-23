@@ -16,3 +16,15 @@ export interface Requirement {
 export interface RequirementListResponse {
   items: Requirement[];
 }
+
+export interface CommentItem {
+  id: string;
+  requirement_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CommentListResponse {
+  items: CommentItem[];
+}

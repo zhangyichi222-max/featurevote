@@ -1,5 +1,5 @@
 import { apiClient } from "../../api/client";
-import type { RequirementListResponse, RequirementStatus } from "../../types/requirement";
+import type { CommentListResponse, RequirementListResponse, RequirementStatus } from "../../types/requirement";
 
 export async function fetchRequirements() {
   return apiClient.get<RequirementListResponse>("/requirements");
@@ -33,6 +33,23 @@ export async function updateRequirementStatus(
 ) {
   return apiClient.post<{ success: boolean; message: string }>(
     `/requirements/${requirementId}/status`,
+    payload,
+  );
+}
+
+export async function fetchComments(requirementId: string) {
+  return apiClient.get<CommentListResponse>(`/requirements/${requirementId}/comments`);
+}
+
+export async function createComment(
+  requirementId: string,
+  payload: {
+    author_name: string;
+    body: string;
+  },
+) {
+  return apiClient.post<{ success: boolean; message: string }>(
+    `/requirements/${requirementId}/comments`,
     payload,
   );
 }

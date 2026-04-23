@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.requirement import RequirementModel, VoteModel
-from app.schemas.requirement import RequirementCreate, RequirementItem, VoteCreate
+from app.models.requirement import CommentModel, RequirementModel, VoteModel
+from app.schemas.requirement import CommentCreate, CommentItem, RequirementCreate, RequirementItem, VoteCreate
 
 
 class RequirementsRepository:
@@ -79,6 +79,35 @@ class RequirementsRepository:
         )
         return record is not None
 
+    async def list_comments(self, requirement_id: str) -> list[CommentItem]:
+        records = self.session.scalars(
+            select(CommentModel)
+            .where(CommentModel.requirement_id == requirement_id)
+            .order_by(CommentModel.created_at.asc())
+        ).all()
+        return [self._to_comment_item(record) for record in records]
+
+    async def create_comment(self, requirement_id: str, payload: CommentCreate) -> dict:
+        record = CommentModel(
+            id=uuid4().hex,
+            requirement_id=requirement_id,
+            author_name=payload.author_name or "Anonymous",
+            body=payload.body,
+            created_at=_utc_now(),
+        )
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return {
+            "record_id": record.id,
+            "fields": {
+                "requirement_id": record.requirement_id,
+                "author_name": record.author_name,
+                "body": record.body,
+                "created_at": record.created_at.isoformat(),
+            },
+        }
+
     async def update_requirement(self, record_id: str, fields: dict) -> dict:
         record = self.session.get(RequirementModel, record_id)
         for key, value in fields.items():
@@ -101,6 +130,15 @@ class RequirementsRepository:
             creator_open_id=record.creator_open_id,
             created_at=record.created_at,
             updated_at=record.updated_at,
+        )
+
+    def _to_comment_item(self, record: CommentModel) -> CommentItem:
+        return CommentItem(
+            id=record.id,
+            requirement_id=record.requirement_id,
+            author_name=record.author_name,
+            body=record.body,
+            created_at=record.created_at,
         )
 
     def _requirement_result(self, record: RequirementModel) -> dict:
