@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "FeatureVote API"
     app_env: str = "dev"
+    app_port: int = 8090
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:5173"]
     mysql_host: str = "127.0.0.1"

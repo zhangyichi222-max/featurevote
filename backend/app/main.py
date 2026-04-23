@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
 from app import models  # noqa: F401
 from app.api.routes.requirements import router as requirements_router
@@ -29,3 +30,7 @@ async def healthcheck() -> dict[str, str]:
 @app.on_event("startup")
 async def startup() -> None:
     Base.metadata.create_all(bind=engine)
+
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.app_port, reload=settings.app_env == "dev")

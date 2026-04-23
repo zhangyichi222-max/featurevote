@@ -10,3 +10,5 @@ frontend/dist/
 Thumbs.db
 .env
 .omx/
+*.pyc
+*.pyo
