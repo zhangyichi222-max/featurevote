@@ -1,0 +1,136 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class TenantModel(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    is_moderation_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    users: Mapped[list["UserModel"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    posts: Mapped[list["PostModel"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    tags: Mapped[list["TagModel"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("tenant_id", "external_id", name="uq_users_tenant_external"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="visitor")
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship(back_populates="users")
+    posts: Mapped[list["PostModel"]] = relationship(back_populates="user")
+    comments: Mapped[list["CommentModel"]] = relationship(back_populates="user")
+
+
+class PostTagModel(Base):
+    __tablename__ = "post_tags"
+    __table_args__ = (UniqueConstraint("post_id", "tag_id", name="uq_post_tags_post_tag"),)
+
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[str] = mapped_column(String(32), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+
+class TagModel(Base):
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_tags_tenant_slug"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    color: Mapped[str] = mapped_column(String(24), nullable=False, default="#2f75d6")
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    tenant: Mapped[TenantModel] = relationship(back_populates="tags")
+    posts: Mapped[list["PostModel"]] = relationship(secondary="post_tags", back_populates="tags")
+
+
+class PostModel(Base):
+    __tablename__ = "posts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_posts_tenant_number"),
+        UniqueConstraint("tenant_id", "slug", name="uq_posts_tenant_slug"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    duplicate_of_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship(back_populates="posts")
+    user: Mapped[UserModel] = relationship(back_populates="posts")
+    tags: Mapped[list[TagModel]] = relationship(secondary="post_tags", back_populates="posts")
+    votes: Mapped[list["VoteModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
+    comments: Mapped[list["CommentModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
+    response: Mapped["PostResponseModel | None"] = relationship(
+        back_populates="post",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    duplicate_of: Mapped["PostModel | None"] = relationship(remote_side=[id])
+
+
+class VoteModel(Base):
+    __tablename__ = "post_votes"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", name="uq_post_votes_post_user"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    post: Mapped[PostModel] = relationship(back_populates="votes")
+    user: Mapped[UserModel] = relationship()
+
+
+class CommentModel(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    post: Mapped[PostModel] = relationship(back_populates="comments")
+    user: Mapped[UserModel] = relationship(back_populates="comments")
+
+
+class PostResponseModel(Base):
+    __tablename__ = "post_responses"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), unique=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    responded_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+
+    post: Mapped[PostModel] = relationship(back_populates="response")
+    user: Mapped[UserModel] = relationship()

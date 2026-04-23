@@ -10,7 +10,6 @@ import {
 } from "./features/requirements/api";
 import type { CommentItem, Requirement, RequirementStatus } from "./types/requirement";
 
-type ViewMode = "board" | "roadmap";
 type SortMode = "popular" | "newest" | "recent";
 type StatusFilter = "all" | RequirementStatus;
 
@@ -69,7 +68,6 @@ function normalize(value: string) {
 }
 
 export default function App() {
-  const [view, setView] = useState<ViewMode>("board");
   const [items, setItems] = useState<Requirement[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
@@ -191,7 +189,7 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <Header view={view} onViewChange={setView} />
+      <Header />
 
       <section className="home-layout">
         <aside className="welcome-column">
@@ -214,23 +212,19 @@ export default function App() {
             <span>What should we build next?</span>
           </button>
 
-          {view === "board" ? (
-            <SuggestionBoard
-              items={visibleItems}
-              query={query}
-              statusFilter={statusFilter}
-              sortMode={sortMode}
-              counts={counts}
-              notice={notice}
-              onQueryChange={setQuery}
-              onStatusFilterChange={setStatusFilter}
-              onSortChange={setSortMode}
-              onSelect={setSelectedId}
-              onVote={handleVote}
-            />
-          ) : (
-            <RoadmapView items={items} onSelect={setSelectedId} onStatusChange={handleStatusChange} />
-          )}
+          <SuggestionBoard
+            items={visibleItems}
+            query={query}
+            statusFilter={statusFilter}
+            sortMode={sortMode}
+            counts={counts}
+            notice={notice}
+            onQueryChange={setQuery}
+            onStatusFilterChange={setStatusFilter}
+            onSortChange={setSortMode}
+            onSelect={setSelectedId}
+            onVote={handleVote}
+          />
         </section>
       </section>
 
@@ -257,29 +251,13 @@ export default function App() {
   );
 }
 
-function Header({ view, onViewChange }: { view: ViewMode; onViewChange: (view: ViewMode) => void }) {
+function Header() {
   return (
     <header className="topbar">
       <div className="brand-mark" aria-label="FeatureVote">
         <span>F</span>
         <strong>FeatureVote</strong>
       </div>
-      <nav className="view-switcher" aria-label="Primary">
-        <button
-          className={view === "board" ? "active" : ""}
-          type="button"
-          onClick={() => onViewChange("board")}
-        >
-          Board
-        </button>
-        <button
-          className={view === "roadmap" ? "active" : ""}
-          type="button"
-          onClick={() => onViewChange("roadmap")}
-        >
-          Roadmap
-        </button>
-      </nav>
     </header>
   );
 }
@@ -397,53 +375,6 @@ function SuggestionListItem({
         </div>
       </button>
     </article>
-  );
-}
-
-function RoadmapView({
-  items,
-  onSelect,
-  onStatusChange,
-}: {
-  items: Requirement[];
-  onSelect: (id: string) => void;
-  onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
-}) {
-  return (
-    <div className="roadmap-grid" aria-label="Roadmap by status">
-      {statusOrder.map((status) => {
-        const columnItems = items
-          .filter((item) => item.status === status)
-          .sort((left, right) => right.vote_count - left.vote_count || right.updated_at.localeCompare(left.updated_at));
-
-        return (
-          <section key={status} className="roadmap-column">
-            <header>
-              <h2>{statusMeta[status].label}</h2>
-              <span>{columnItems.length}</span>
-            </header>
-            <div className="roadmap-list">
-              {columnItems.map((item) => (
-                <article key={item.id} className="roadmap-item">
-                  <button type="button" onClick={() => onSelect(item.id)}>
-                    <strong>{item.title}</strong>
-                    <span>{item.vote_count} votes</span>
-                  </button>
-                  <select value={item.status} onChange={(event) => onStatusChange(item.id, event.target.value as RequirementStatus)}>
-                    {statusOrder.map((option) => (
-                      <option key={option} value={option}>
-                        {statusMeta[option].label}
-                      </option>
-                    ))}
-                  </select>
-                </article>
-              ))}
-              {!columnItems.length ? <p className="column-empty">No suggestions here.</p> : null}
-            </div>
-          </section>
-        );
-      })}
-    </div>
   );
 }
 

@@ -2,12 +2,13 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
-from app.repositories.requirements import RequirementsRepository
-from app.services.requirements import RequirementsService
+from app.repositories.posts import PostsRepository
+from app.services.posts import PostsService
 
 
-def get_requirements_service(
+def get_posts_service(
     session: Session = Depends(get_db_session),
-) -> RequirementsService:
-    repository = RequirementsRepository(session)
-    return RequirementsService(repository)
+) -> PostsService:
+    repository = PostsRepository(session)
+    repository.ensure_seed_data()
+    return PostsService(repository)

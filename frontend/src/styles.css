@@ -107,31 +107,6 @@ button:focus-visible {
   font-weight: 800;
 }
 
-.view-switcher {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid #dde4ee;
-  border-radius: 8px;
-  background: #eef2f7;
-}
-
-.view-switcher button {
-  min-width: 96px;
-  min-height: 38px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #526174;
-  font-weight: 700;
-}
-
-.view-switcher button.active {
-  background: #fff;
-  color: #1b2a44;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.12);
-}
-
 .home-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.95fr) minmax(0, 2fr);
@@ -445,75 +420,6 @@ button:focus-visible {
   gap: 4px;
 }
 
-.roadmap-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(210px, 1fr));
-  gap: 14px;
-  overflow-x: auto;
-  padding-bottom: 10px;
-}
-
-.roadmap-column {
-  min-height: 520px;
-  padding: 14px;
-  border: 1px solid #dfe6f0;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.roadmap-column header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.roadmap-column h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.roadmap-column header span {
-  min-width: 30px;
-  padding: 3px 8px;
-  border-radius: 8px;
-  background: #eef2f7;
-  text-align: center;
-  font-weight: 800;
-}
-
-.roadmap-list {
-  display: grid;
-  gap: 10px;
-}
-
-.roadmap-item {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #e3e9f2;
-  border-radius: 8px;
-  background: #fbfcfe;
-}
-
-.roadmap-item button {
-  display: grid;
-  gap: 6px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.roadmap-item strong {
-  line-height: 1.35;
-}
-
-.roadmap-item span {
-  color: #687688;
-  font-size: 0.88rem;
-}
-
 .modal-backdrop,
 .detail-backdrop {
   position: fixed;
@@ -760,29 +666,12 @@ button:focus-visible {
     max-width: 16ch;
   }
 
-  .roadmap-grid {
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-
-  .roadmap-column {
-    min-height: auto;
-  }
 }
 
 @media (max-width: 640px) {
   .topbar {
     align-items: stretch;
-    flex-direction: column;
     padding: 12px 16px;
-  }
-
-  .view-switcher {
-    width: 100%;
-  }
-
-  .view-switcher button {
-    flex: 1;
   }
 
   .home-layout {

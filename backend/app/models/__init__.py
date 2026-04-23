@@ -1,3 +1,21 @@
-from app.models.requirement import CommentModel, RequirementModel, VoteModel
+from app.models.post import (
+    CommentModel,
+    PostModel,
+    PostResponseModel,
+    PostTagModel,
+    TagModel,
+    TenantModel,
+    UserModel,
+    VoteModel,
+)
 
-__all__ = ["CommentModel", "RequirementModel", "VoteModel"]
+__all__ = [
+    "CommentModel",
+    "PostModel",
+    "PostResponseModel",
+    "PostTagModel",
+    "TagModel",
+    "TenantModel",
+    "UserModel",
+    "VoteModel",
+]

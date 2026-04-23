@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from app import models  # noqa: F401
-from app.api.routes.requirements import router as requirements_router
+from app.api.routes.posts import router as posts_router, tags_router
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
+from app.repositories.posts import seed_default_data
 
 
 app = FastAPI(title=settings.app_name)
@@ -19,7 +20,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(requirements_router, prefix=settings.api_prefix)
+app.include_router(posts_router, prefix=settings.api_prefix)
+app.include_router(tags_router, prefix=settings.api_prefix)
 
 
 @app.get("/health")
@@ -30,6 +32,8 @@ async def healthcheck() -> dict[str, str]:
 @app.on_event("startup")
 async def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as session:
+        seed_default_data(session)
 
 
 if __name__ == "__main__":
