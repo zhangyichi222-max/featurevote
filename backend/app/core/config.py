@@ -1,7 +1,28 @@
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _load_mysql_env_from_bashrc() -> None:
+    bashrc_path = Path.home() / ".bashrc"
+    if not bashrc_path.is_file():
+        return
+
+    for raw_line in bashrc_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line.startswith("export MYSQL_") or "=" not in line:
+            continue
+
+        key, value = line[len("export ") :].split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("\"'")
+        os.environ.setdefault(key, value)
+
+
+_load_mysql_env_from_bashrc()
 
 
 class Settings(BaseSettings):
