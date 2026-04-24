@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     app_port: int = 8090
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origin_regex: str | None = r"^https?://[^/]+:5173$"
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_user: str = "root"
@@ -44,6 +45,14 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def parse_cors_origin_regex(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
         return value
 
 

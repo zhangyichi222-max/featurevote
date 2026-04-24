@@ -1,4 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8090/api/v1";
+const DEFAULT_API_BASE_URL =
+  typeof window === "undefined"
+    ? "http://localhost:8090/api/v1"
+    : `${window.location.protocol}//${window.location.hostname}:8090/api/v1`;
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
