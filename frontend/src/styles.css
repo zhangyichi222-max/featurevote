@@ -245,6 +245,35 @@ button:focus-visible {
   font-weight: 800;
 }
 
+.field-hint,
+.field-error {
+  display: block;
+  margin-top: -2px;
+  font-size: 0.84rem;
+}
+
+.field-hint {
+  color: #718094;
+}
+
+.field-error,
+.form-error {
+  color: #b42318;
+}
+
+.input-error {
+  border-color: #d92d20;
+}
+
+.form-error {
+  padding: 10px 12px;
+  border: 1px solid #f3b5ae;
+  border-radius: 8px;
+  background: #fef3f2;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
 .sync-notice {
   min-height: 44px;
   display: flex;

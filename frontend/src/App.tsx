@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { ApiError } from "./api/client";
 import {
   createComment,
   createRequirement,
@@ -66,6 +67,8 @@ function formatDate(value: string) {
 function normalize(value: string) {
   return value.trim().toLowerCase();
 }
+
+type ComposerField = "title" | "description";
 
 export default function App() {
   const [items, setItems] = useState<Requirement[]>([]);
@@ -143,6 +146,9 @@ export default function App() {
       setNotice("Suggestion submitted.");
       setIsComposerOpen(false);
       await loadRequirements();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Suggestion submission failed.");
+      throw error;
     } finally {
       setIsBusy(false);
     }
@@ -373,15 +379,49 @@ function SuggestionComposer({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [name, setName] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ComposerField, string>>>({});
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    onSubmit({
-      title,
-      description,
-      creator_name: name || "Anonymous",
-      creator_open_id: name ? `local-${normalize(name).replace(/\s+/g, "-")}` : "anonymous",
-    });
+    const nextFieldErrors: Partial<Record<ComposerField, string>> = {};
+    const trimmedTitle = title.trim();
+    const trimmedDescription = description.trim();
+
+    if (trimmedTitle.length < 3) {
+      nextFieldErrors.title = "Title must be at least 3 characters.";
+    }
+    if (!trimmedDescription) {
+      nextFieldErrors.description = "Description is required.";
+    }
+
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setSubmitError("Please fix the highlighted fields before submitting.");
+      return;
+    }
+
+    setSubmitError("");
+
+    try {
+      await onSubmit({
+        title: trimmedTitle,
+        description: trimmedDescription,
+        creator_name: name.trim() || "Anonymous",
+        creator_open_id: name ? `local-${normalize(name).replace(/\s+/g, "-")}` : "anonymous",
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSubmitError(error.message);
+        setFieldErrors({
+          title: error.fieldErrors.title,
+          description: error.fieldErrors.description,
+        });
+        return;
+      }
+
+      setSubmitError(error instanceof Error ? error.message : "Suggestion submission failed.");
+    }
   }
 
   return (
@@ -398,21 +438,46 @@ function SuggestionComposer({
         </div>
         <label>
           <span>Title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required />
+          <input
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setFieldErrors((current) => ({ ...current, title: undefined }));
+              setSubmitError("");
+            }}
+            maxLength={120}
+            minLength={3}
+            required
+            aria-invalid={Boolean(fieldErrors.title)}
+            className={fieldErrors.title ? "input-error" : ""}
+          />
+          <small className={fieldErrors.title ? "field-error" : "field-hint"}>
+            {fieldErrors.title ?? "Use at least 3 characters so others can understand the idea quickly."}
+          </small>
         </label>
         <label>
           <span>Description</span>
           <textarea
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => {
+              setDescription(event.target.value);
+              setFieldErrors((current) => ({ ...current, description: undefined }));
+              setSubmitError("");
+            }}
             rows={7}
             required
+            aria-invalid={Boolean(fieldErrors.description)}
+            className={fieldErrors.description ? "input-error" : ""}
           />
+          <small className={fieldErrors.description ? "field-error" : "field-hint"}>
+            {fieldErrors.description ?? "Add enough detail for the team to understand the request."}
+          </small>
         </label>
         <label>
           <span>Name</span>
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" />
         </label>
+        {submitError ? <div className="form-error">{submitError}</div> : null}
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancel
