@@ -195,15 +195,7 @@ export default function App() {
         <aside className="welcome-column">
           <p className="eyebrow">FeatureVote</p>
           <h1>Share feedback. Vote on what matters.</h1>
-          <p className="welcome-copy">
-            A focused feedback board for collecting suggestions, measuring demand, and showing
-            progress back to the people who asked.
-          </p>
-          <div className="board-stats" aria-label="Suggestion summary">
-            <SummaryStat label="Suggestions" value={items.length} />
-            <SummaryStat label="Votes" value={items.reduce((total, item) => total + item.vote_count, 0)} />
-            <SummaryStat label="Planned" value={counts.approved + counts.in_progress} />
-          </div>
+          <p className="welcome-copy">A focused place to share feedback and vote on what matters.</p>
         </aside>
 
         <section className="suggestions-column">
@@ -259,15 +251,6 @@ function Header() {
         <strong>FeatureVote</strong>
       </div>
     </header>
-  );
-}
-
-function SummaryStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
   );
 }
 
@@ -368,11 +351,6 @@ function SuggestionListItem({
           <StatusLozenge status={item.status} />
         </div>
         <p>{item.description}</p>
-        <div className="suggestion-meta">
-          <span>{item.req_id}</span>
-          <span>{item.creator_name || "Anonymous"}</span>
-          <span>Updated {formatDate(item.updated_at)}</span>
-        </div>
       </button>
     </article>
   );
@@ -542,20 +520,6 @@ function SuggestionDetail({
                 ))}
               </select>
             </label>
-            <dl className="detail-meta">
-              <div>
-                <dt>Submitted by</dt>
-                <dd>{item.creator_name || "Anonymous"}</dd>
-              </div>
-              <div>
-                <dt>Reference</dt>
-                <dd>{item.req_id}</dd>
-              </div>
-              <div>
-                <dt>Updated</dt>
-                <dd>{formatDate(item.updated_at)}</dd>
-              </div>
-            </dl>
           </aside>
         </div>
       </section>
