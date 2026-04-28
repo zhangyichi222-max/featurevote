@@ -38,6 +38,11 @@ button {
   color: inherit;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 input,
 textarea,
 select {
@@ -104,6 +109,41 @@ button:focus-visible {
   border-radius: 8px;
   background: #2f75d6;
   color: #fff;
+  font-weight: 800;
+}
+
+.auth-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.user-pill {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-pill strong,
+.user-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-pill strong {
+  max-width: 180px;
+  font-size: 0.92rem;
+}
+
+.user-pill span {
+  color: #687789;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
@@ -474,7 +514,8 @@ button:focus-visible {
 .icon-button,
 .back-button,
 .secondary-button,
-.primary-button {
+.primary-button,
+.danger-button {
   border-radius: 8px;
   font-weight: 800;
 }
@@ -492,7 +533,8 @@ button:focus-visible {
 
 .secondary-button,
 .primary-button,
-.back-button {
+.back-button,
+.danger-button {
   min-height: 42px;
   padding: 0 14px;
   border: 1px solid #d8dee8;
@@ -510,9 +552,10 @@ button:focus-visible {
   color: #fff;
 }
 
-.primary-button:disabled {
-  cursor: wait;
-  opacity: 0.7;
+.danger-button {
+  background: #fff;
+  border-color: #f3b5ae;
+  color: #b42318;
 }
 
 .detail-backdrop {
@@ -619,6 +662,11 @@ button:focus-visible {
   gap: 16px;
 }
 
+.admin-controls {
+  display: grid;
+  gap: 12px;
+}
+
 .big-vote-button {
   min-height: 132px;
   border: 1px solid #dfe6f0;
@@ -644,7 +692,17 @@ button:focus-visible {
 @media (max-width: 640px) {
   .topbar {
     align-items: stretch;
+    flex-direction: column;
     padding: 12px 16px;
+  }
+
+  .auth-controls {
+    justify-content: stretch;
+  }
+
+  .auth-controls button,
+  .user-pill {
+    flex: 1 1 auto;
   }
 
   .home-layout {

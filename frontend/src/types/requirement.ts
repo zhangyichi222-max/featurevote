@@ -1,4 +1,11 @@
 export type RequirementStatus = "backlog" | "approved" | "in_progress" | "done" | "rejected";
+export type UserRole = "visitor" | "admin";
+
+export interface CurrentUser {
+  id: string;
+  name: string;
+  role: UserRole;
+}
 
 export interface Requirement {
   id: string;
@@ -7,6 +14,7 @@ export interface Requirement {
   description: string;
   status: RequirementStatus;
   vote_count: number;
+  has_voted: boolean;
   creator_name: string;
   creator_open_id: string;
   created_at: string;

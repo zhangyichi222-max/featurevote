@@ -11,17 +11,20 @@ type ApiValidationError = {
 };
 
 export class ApiError extends Error {
+  status: number;
   fieldErrors: Record<string, string>;
 
-  constructor(message: string, fieldErrors: Record<string, string> = {}) {
+  constructor(message: string, status: number, fieldErrors: Record<string, string> = {}) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
     this.fieldErrors = fieldErrors;
   }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
@@ -57,7 +60,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Fall through to the raw response body when the server did not send JSON.
     }
-    throw new ApiError(detail || error || "Request failed", fieldErrors);
+    throw new ApiError(detail || error || "Request failed", response.status, fieldErrors);
   }
 
   return response.json() as Promise<T>;
@@ -65,9 +68,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const apiClient = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
+  post: <T>(path: string, body: unknown = {}) =>
     request<T>(path, {
       method: "POST",
       body: JSON.stringify(body),
     }),
 };
+
+export function startFeishuBrowserLogin() {
+  window.location.assign(`${API_BASE_URL}/auth/feishu/browser/start`);
+}

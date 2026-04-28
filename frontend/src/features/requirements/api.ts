@@ -1,5 +1,10 @@
 import { apiClient } from "../../api/client";
-import type { CommentListResponse, RequirementListResponse, RequirementStatus } from "../../types/requirement";
+import type {
+  CommentListResponse,
+  CurrentUser,
+  RequirementListResponse,
+  RequirementStatus,
+} from "../../types/requirement";
 
 type PostStatus = "open" | "planned" | "in_progress" | "completed" | "declined" | "duplicate";
 
@@ -13,6 +18,7 @@ type PostItem = {
   is_approved: boolean;
   votes_count: number;
   comments_count: number;
+  has_voted?: boolean;
   user: { name: string; id: string };
   tags: Array<{ slug: string; name: string; color: string }>;
   response?: { text: string } | null;
@@ -20,6 +26,10 @@ type PostItem = {
   created_at: string;
   updated_at: string;
 };
+
+type CurrentUserResponse = {
+  user?: CurrentUser | null;
+} & Partial<CurrentUser>;
 
 type PostListResponse = {
   items: PostItem[];
@@ -72,6 +82,7 @@ export async function fetchRequirements() {
       description: item.description,
       status: postStatusToStatus[item.status],
       vote_count: item.votes_count,
+      has_voted: Boolean(item.has_voted),
       creator_name: item.user.name,
       creator_open_id: item.user.id,
       created_at: item.created_at,
@@ -83,32 +94,16 @@ export async function fetchRequirements() {
 export async function createRequirement(payload: {
   title: string;
   description: string;
-  creator_name: string;
-  creator_open_id: string;
 }) {
   return apiClient.post<{ id: string }>("/posts", {
     title: payload.title,
     description: payload.description,
-    author_name: payload.creator_name,
-    author_external_id: payload.creator_open_id,
     tags: [],
   });
 }
 
-export async function voteRequirement(
-  requirementId: string,
-  payload: {
-    voter_name: string;
-    voter_open_id: string;
-  },
-) {
-  return apiClient.post<{ success: boolean; message: string }>(
-    `/posts/${requirementId}/vote`,
-    {
-      voter_name: payload.voter_name,
-      voter_external_id: payload.voter_open_id,
-    },
-  );
+export async function voteRequirement(requirementId: string) {
+  return apiClient.post<{ success: boolean; message: string }>(`/posts/${requirementId}/vote`);
 }
 
 export async function updateRequirementStatus(
@@ -140,15 +135,12 @@ export async function fetchComments(requirementId: string) {
 export async function createComment(
   requirementId: string,
   payload: {
-    author_name: string;
     body: string;
   },
 ) {
   return apiClient.post<{ success: boolean; message: string }>(
     `/posts/${requirementId}/comments`,
     {
-      author_name: payload.author_name,
-      author_external_id: payload.author_name.toLowerCase().replace(/\s+/g, "-") || "anonymous",
       body: payload.body,
     },
   );
@@ -164,8 +156,25 @@ export async function markDuplicate(requirementId: string, originalPostId: strin
   });
 }
 
-export async function moderatePost(requirementId: string, isApproved: boolean) {
-  return apiClient.post<{ id: string }>(`/posts/${requirementId}/moderation`, {
-    is_approved: isApproved,
-  });
+export async function archiveRequirement(requirementId: string) {
+  return apiClient.post<{ id: string }>(`/posts/${requirementId}/archive`);
+}
+
+export async function fetchCurrentUser() {
+  const data = await apiClient.get<CurrentUserResponse>("/auth/me");
+  if (data.user !== undefined) {
+    return data.user;
+  }
+  if (data.id && data.name && data.role) {
+    return { id: data.id, name: data.name, role: data.role };
+  }
+  return null;
+}
+
+export async function logoutCurrentUser() {
+  return apiClient.post<{ success: boolean; message: string }>("/auth/logout");
+}
+
+export async function exchangeFeishuClientCode(code: string) {
+  return apiClient.post<{ success: boolean; user?: CurrentUser }>("/auth/feishu/client/exchange", { code });
 }

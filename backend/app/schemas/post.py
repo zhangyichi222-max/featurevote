@@ -62,19 +62,14 @@ class PostListResponse(BaseModel):
 class PostCreate(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=1, max_length=5000)
-    author_name: str = Field(default="Anonymous", max_length=255)
-    author_external_id: str = Field(default="anonymous", max_length=255)
     tags: list[str] = Field(default_factory=list)
 
 
 class VoteCreate(BaseModel):
-    voter_name: str = Field(default="Anonymous voter", max_length=255)
-    voter_external_id: str = Field(default="local-demo-user", max_length=255)
+    pass
 
 
 class CommentCreate(BaseModel):
-    author_name: str = Field(default="Anonymous", max_length=255)
-    author_external_id: str = Field(default="anonymous", max_length=255)
     body: str = Field(min_length=1, max_length=5000)
 
 

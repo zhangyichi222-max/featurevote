@@ -1,15 +1,19 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { ApiError } from "./api/client";
+import { ApiError, startFeishuBrowserLogin } from "./api/client";
 import {
+  archiveRequirement,
   createComment,
   createRequirement,
+  exchangeFeishuClientCode,
   fetchComments,
+  fetchCurrentUser,
   fetchRequirements,
+  logoutCurrentUser,
   updateRequirementStatus,
   voteRequirement,
 } from "./features/requirements/api";
-import type { CommentItem, Requirement, RequirementStatus } from "./types/requirement";
+import type { CommentItem, CurrentUser, Requirement, RequirementStatus } from "./types/requirement";
 
 type SortMode = "popular" | "newest" | "recent";
 type StatusFilter = "all" | RequirementStatus;
@@ -80,6 +84,10 @@ export default function App() {
   const [notice, setNotice] = useState("Loading suggestions...");
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  const isAdmin = currentUser?.role === "admin";
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -120,8 +128,41 @@ export default function App() {
     setNotice(data.items.length ? "Suggestions synced." : "No suggestions yet. Start the board.");
   }
 
+  async function loadCurrentUser() {
+    try {
+      setCurrentUser(await fetchCurrentUser());
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setCurrentUser(null);
+        return;
+      }
+      setNotice(error instanceof Error ? error.message : "Could not load current user.");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadRequirements().catch((error: Error) => setNotice(error.message));
+    loadCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("feishu_client_code");
+    if (!code) {
+      return;
+    }
+
+    exchangeFeishuClientCode(code)
+      .then(() => loadCurrentUser())
+      .then(() => {
+        params.delete("feishu_client_code");
+        const nextSearch = params.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+        setNotice("Signed in with Feishu.");
+      })
+      .catch((error: Error) => setNotice(error.message));
   }, []);
 
   useEffect(() => {
@@ -134,12 +175,31 @@ export default function App() {
       .catch(() => setComments((current) => ({ ...current, [selectedId]: [] })));
   }, [comments, selectedId]);
 
-  async function handleCreate(payload: {
-    title: string;
-    description: string;
-    creator_name: string;
-    creator_open_id: string;
-  }) {
+  function requireLogin(action: string) {
+    if (currentUser) {
+      return true;
+    }
+    setNotice(`Sign in with Feishu to ${action}.`);
+    return false;
+  }
+
+  async function handleLogout() {
+    setIsBusy(true);
+    try {
+      await logoutCurrentUser();
+      setCurrentUser(null);
+      setNotice("Signed out. Browsing is still available.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Sign out failed.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleCreate(payload: { title: string; description: string }) {
+    if (!requireLogin("submit suggestions")) {
+      throw new Error("Sign in required.");
+    }
     setIsBusy(true);
     try {
       await createRequirement(payload);
@@ -155,12 +215,12 @@ export default function App() {
   }
 
   async function handleVote(requirementId: string) {
+    if (!requireLogin("vote")) {
+      return;
+    }
     setIsBusy(true);
     try {
-      await voteRequirement(requirementId, {
-        voter_name: "Anonymous voter",
-        voter_open_id: "local-demo-user",
-      });
+      await voteRequirement(requirementId);
       setNotice("Vote recorded.");
       await loadRequirements();
     } catch (error) {
@@ -171,6 +231,10 @@ export default function App() {
   }
 
   async function handleStatusChange(requirementId: string, status: RequirementStatus) {
+    if (!isAdmin) {
+      setNotice("Only admins can change status.");
+      return;
+    }
     setIsBusy(true);
     try {
       await updateRequirementStatus(requirementId, { status });
@@ -181,7 +245,28 @@ export default function App() {
     }
   }
 
-  async function handleComment(requirementId: string, payload: { author_name: string; body: string }) {
+  async function handleArchive(requirementId: string) {
+    if (!isAdmin) {
+      setNotice("Only admins can archive suggestions.");
+      return;
+    }
+    setIsBusy(true);
+    try {
+      await archiveRequirement(requirementId);
+      setSelectedId(null);
+      setNotice("Suggestion archived.");
+      await loadRequirements();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Archive failed.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleComment(requirementId: string, payload: { body: string }) {
+    if (!requireLogin("comment")) {
+      return;
+    }
     setIsBusy(true);
     try {
       await createComment(requirementId, payload);
@@ -195,7 +280,13 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <Header />
+      <Header
+        currentUser={currentUser}
+        isAuthLoading={isAuthLoading}
+        isBusy={isBusy}
+        onLogin={startFeishuBrowserLogin}
+        onLogout={handleLogout}
+      />
 
       <section className="home-layout">
         <aside className="welcome-column">
@@ -205,7 +296,15 @@ export default function App() {
         </aside>
 
         <section className="suggestions-column">
-          <button className="new-suggestion-button" type="button" onClick={() => setIsComposerOpen(true)}>
+          <button
+            className="new-suggestion-button"
+            type="button"
+            onClick={() => {
+              if (requireLogin("submit suggestions")) {
+                setIsComposerOpen(true);
+              }
+            }}
+          >
             <span className="plus-icon">+</span>
             <span>What should we build next?</span>
           </button>
@@ -222,6 +321,7 @@ export default function App() {
             onSortChange={setSortMode}
             onSelect={setSelectedId}
             onVote={handleVote}
+            canWrite={Boolean(currentUser)}
           />
         </section>
       </section>
@@ -242,19 +342,51 @@ export default function App() {
           onClose={() => setSelectedId(null)}
           onVote={handleVote}
           onStatusChange={handleStatusChange}
+          onArchive={handleArchive}
           onComment={handleComment}
+          canWrite={Boolean(currentUser)}
+          isAdmin={isAdmin}
         />
       ) : null}
     </main>
   );
 }
 
-function Header() {
+function Header({
+  currentUser,
+  isAuthLoading,
+  isBusy,
+  onLogin,
+  onLogout,
+}: {
+  currentUser: CurrentUser | null;
+  isAuthLoading: boolean;
+  isBusy: boolean;
+  onLogin: () => void;
+  onLogout: () => Promise<void>;
+}) {
   return (
     <header className="topbar">
       <div className="brand-mark" aria-label="FeatureVote">
         <span>F</span>
         <strong>FeatureVote</strong>
+      </div>
+      <div className="auth-controls">
+        {currentUser ? (
+          <>
+            <div className="user-pill">
+              <strong>{currentUser.name}</strong>
+              <span>{currentUser.role === "admin" ? "Admin" : "Member"}</span>
+            </div>
+            <button className="secondary-button" type="button" onClick={onLogout} disabled={isBusy}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <button className="primary-button" type="button" onClick={onLogin} disabled={isAuthLoading}>
+            {isAuthLoading ? "Checking..." : "Sign in with Feishu"}
+          </button>
+        )}
       </div>
     </header>
   );
@@ -272,6 +404,7 @@ function SuggestionBoard({
   onSortChange,
   onSelect,
   onVote,
+  canWrite,
 }: {
   items: Requirement[];
   query: string;
@@ -284,6 +417,7 @@ function SuggestionBoard({
   onSortChange: (value: SortMode) => void;
   onSelect: (id: string) => void;
   onVote: (id: string) => Promise<void>;
+  canWrite: boolean;
 }) {
   return (
     <div className="board-area">
@@ -322,7 +456,7 @@ function SuggestionBoard({
 
       <div className="suggestion-list">
         {items.map((item) => (
-          <SuggestionListItem key={item.id} item={item} onSelect={onSelect} onVote={onVote} />
+          <SuggestionListItem key={item.id} item={item} onSelect={onSelect} onVote={onVote} canWrite={canWrite} />
         ))}
         {!items.length ? (
           <div className="empty-state">
@@ -339,17 +473,25 @@ function SuggestionListItem({
   item,
   onSelect,
   onVote,
+  canWrite,
 }: {
   item: Requirement;
   onSelect: (id: string) => void;
   onVote: (id: string) => Promise<void>;
+  canWrite: boolean;
 }) {
   return (
     <article className="suggestion-item">
-      <button className="vote-box" type="button" onClick={() => onVote(item.id)} aria-label="Vote">
+      <button
+        className="vote-box"
+        type="button"
+        onClick={() => onVote(item.id)}
+        aria-label={canWrite ? "Vote" : "Sign in to vote"}
+        title={canWrite ? "Vote" : "Sign in to vote"}
+      >
         <span>^</span>
         <strong>{item.vote_count}</strong>
-        <small>{item.vote_count === 1 ? "vote" : "votes"}</small>
+        <small>{item.has_voted ? "voted" : item.vote_count === 1 ? "vote" : "votes"}</small>
       </button>
       <button className="suggestion-content" type="button" onClick={() => onSelect(item.id)}>
         <div className="suggestion-title-row">
@@ -369,16 +511,10 @@ function SuggestionComposer({
 }: {
   isBusy: boolean;
   onClose: () => void;
-  onSubmit: (payload: {
-    title: string;
-    description: string;
-    creator_name: string;
-    creator_open_id: string;
-  }) => Promise<void>;
+  onSubmit: (payload: { title: string; description: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [name, setName] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ComposerField, string>>>({});
 
@@ -407,8 +543,6 @@ function SuggestionComposer({
       await onSubmit({
         title: trimmedTitle,
         description: trimmedDescription,
-        creator_name: name.trim() || "Anonymous",
-        creator_open_id: name ? `local-${normalize(name).replace(/\s+/g, "-")}` : "anonymous",
       });
     } catch (error) {
       if (error instanceof ApiError) {
@@ -473,10 +607,6 @@ function SuggestionComposer({
             {fieldErrors.description ?? "Add enough detail for the team to understand the request."}
           </small>
         </label>
-        <label>
-          <span>Name</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional" />
-        </label>
         {submitError ? <div className="form-error">{submitError}</div> : null}
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>
@@ -498,7 +628,10 @@ function SuggestionDetail({
   onClose,
   onVote,
   onStatusChange,
+  onArchive,
   onComment,
+  canWrite,
+  isAdmin,
 }: {
   item: Requirement;
   comments: CommentItem[];
@@ -506,15 +639,16 @@ function SuggestionDetail({
   onClose: () => void;
   onVote: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
-  onComment: (id: string, payload: { author_name: string; body: string }) => Promise<void>;
+  onArchive: (id: string) => Promise<void>;
+  onComment: (id: string, payload: { body: string }) => Promise<void>;
+  canWrite: boolean;
+  isAdmin: boolean;
 }) {
-  const [authorName, setAuthorName] = useState("");
   const [body, setBody] = useState("");
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    await onComment(item.id, { author_name: authorName || "Anonymous", body });
-    setAuthorName("");
+    await onComment(item.id, { body });
     setBody("");
   }
 
@@ -553,19 +687,22 @@ function SuggestionDetail({
                 ))}
                 {!comments.length ? <p className="comment-empty">No comments yet. Start the discussion.</p> : null}
               </div>
-              <form className="comment-form" onSubmit={handleSubmit}>
-                <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} placeholder="Name" />
-                <textarea
-                  value={body}
-                  onChange={(event) => setBody(event.target.value)}
-                  placeholder="Add a comment"
-                  rows={4}
-                  required
-                />
-                <button className="primary-button" type="submit" disabled={isBusy}>
-                  {isBusy ? "Posting..." : "Post comment"}
-                </button>
-              </form>
+              {canWrite ? (
+                <form className="comment-form" onSubmit={handleSubmit}>
+                  <textarea
+                    value={body}
+                    onChange={(event) => setBody(event.target.value)}
+                    placeholder="Add a comment"
+                    rows={4}
+                    required
+                  />
+                  <button className="primary-button" type="submit" disabled={isBusy}>
+                    {isBusy ? "Posting..." : "Post comment"}
+                  </button>
+                </form>
+              ) : (
+                <p className="comment-empty">Sign in with Feishu to join the discussion.</p>
+              )}
             </section>
           </article>
 
@@ -573,18 +710,28 @@ function SuggestionDetail({
             <button className="big-vote-button" type="button" onClick={() => onVote(item.id)}>
               <span>^</span>
               <strong>{item.vote_count}</strong>
-              <small>{item.vote_count === 1 ? "vote" : "votes"}</small>
+              <small>{item.has_voted ? "voted" : item.vote_count === 1 ? "vote" : "votes"}</small>
             </button>
-            <label className="status-control">
-              <span>Status</span>
-              <select value={item.status} onChange={(event) => onStatusChange(item.id, event.target.value as RequirementStatus)}>
-                {statusOrder.map((status) => (
-                  <option key={status} value={status}>
-                    {statusMeta[status].label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {isAdmin ? (
+              <div className="admin-controls">
+                <label className="status-control">
+                  <span>Status</span>
+                  <select
+                    value={item.status}
+                    onChange={(event) => onStatusChange(item.id, event.target.value as RequirementStatus)}
+                  >
+                    {statusOrder.map((status) => (
+                      <option key={status} value={status}>
+                        {statusMeta[status].label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="danger-button" type="button" onClick={() => onArchive(item.id)} disabled={isBusy}>
+                  Archive suggestion
+                </button>
+              </div>
+            ) : null}
           </aside>
         </div>
       </section>

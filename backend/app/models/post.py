@@ -26,14 +26,24 @@ class TenantModel(Base):
 
 class UserModel(Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("tenant_id", "external_id", name="uq_users_tenant_external"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "external_id", name="uq_users_tenant_external"),
+        UniqueConstraint("tenant_id", "feishu_open_id", name="uq_users_tenant_feishu_open"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    feishu_open_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    feishu_union_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    department_ids: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    group_ids: Mapped[str] = mapped_column(Text, nullable=False, default="")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="visitor")
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[TenantModel] = relationship(back_populates="users")
     posts: Mapped[list["PostModel"]] = relationship(back_populates="user")
@@ -80,6 +90,8 @@ class PostModel(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     duplicate_of_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id"), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    archived_by_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
@@ -94,6 +106,7 @@ class PostModel(Base):
         uselist=False,
     )
     duplicate_of: Mapped["PostModel | None"] = relationship(remote_side=[id])
+    archived_by: Mapped[UserModel | None] = relationship(foreign_keys=[archived_by_user_id])
 
 
 class VoteModel(Base):

@@ -30,19 +30,37 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     app_port: int = 8090
     api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:5173"]
-    cors_origin_regex: str | None = r"^https?://[^/]+:5173$"
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origin_regex: str | None = None
+    frontend_base_url: str = "http://localhost:5173"
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_user: str = "root"
     mysql_password: str = ""
     mysql_database: str = "featurevote"
+    feishu_app_id: str = ""
+    feishu_app_secret: str = ""
+    feishu_redirect_uri: str = "http://localhost:8090/api/v1/auth/feishu/browser/callback"
+    feishu_admin_department_ids: list[str] = []
+    feishu_admin_group_ids: list[str] = []
+    auth_cookie_name: str = "featurevote_session"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    auth_token_secret: str = "dev-featurevote-change-me"
+    auth_token_ttl_seconds: int = 3600
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("feishu_admin_department_ids", "feishu_admin_group_ids", mode="before")
+    @classmethod
+    def parse_id_list(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value

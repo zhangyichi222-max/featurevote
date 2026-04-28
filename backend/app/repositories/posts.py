@@ -28,7 +28,6 @@ from app.schemas.post import (
 )
 
 DEFAULT_TENANT_ID = "defaulttenant000000000000000000"
-DEFAULT_ADMIN_EXTERNAL_ID = "demo-admin"
 
 
 class PostsRepository:
@@ -46,19 +45,6 @@ class PostsRepository:
                 created_at=_utc_now(),
             )
             self.session.add(tenant)
-
-        admin = self._get_user_by_external_id(DEFAULT_ADMIN_EXTERNAL_ID)
-        if admin is None:
-            self.session.add(
-                UserModel(
-                    id=uuid4().hex,
-                    tenant_id=DEFAULT_TENANT_ID,
-                    external_id=DEFAULT_ADMIN_EXTERNAL_ID,
-                    name="Demo Admin",
-                    role="admin",
-                    created_at=_utc_now(),
-                )
-            )
 
         for name, color in [
             ("Feature", "#2f75d6"),
@@ -133,8 +119,10 @@ class PostsRepository:
             return None
         return self._to_post_item(post)
 
-    def create_post(self, payload: PostCreate) -> PostItem:
-        user = self.ensure_user(payload.author_external_id, payload.author_name)
+    def get_active_post_model(self, post_id: str) -> PostModel | None:
+        return self.session.scalars(self._post_select().where(PostModel.id == post_id)).first()
+
+    def create_post(self, payload: PostCreate, user: UserModel) -> PostItem:
         number = self._next_post_number()
         title_slug = _slugify(payload.title)
         slug = self._unique_post_slug(title_slug)
@@ -156,8 +144,7 @@ class PostsRepository:
         self.session.commit()
         return self.get_post(post.id)
 
-    def create_vote(self, post_id: str, payload: VoteCreate) -> None:
-        user = self.ensure_user(payload.voter_external_id, payload.voter_name)
+    def create_vote(self, post_id: str, user: UserModel) -> None:
         vote = VoteModel(id=uuid4().hex, post_id=post_id, user_id=user.id, created_at=_utc_now())
         self.session.add(vote)
         try:
@@ -175,8 +162,7 @@ class PostsRepository:
         ).all()
         return [self._to_comment_item(record) for record in records]
 
-    def create_comment(self, post_id: str, payload: CommentCreate) -> CommentItem:
-        user = self.ensure_user(payload.author_external_id, payload.author_name)
+    def create_comment(self, post_id: str, payload: CommentCreate, user: UserModel) -> CommentItem:
         comment = CommentModel(
             id=uuid4().hex,
             post_id=post_id,
@@ -201,9 +187,8 @@ class PostsRepository:
         self.session.commit()
         return self._to_tag_item(tag)
 
-    def set_response(self, post_id: str, payload: StatusResponseUpdate) -> PostItem:
-        post = self.session.get(PostModel, post_id)
-        admin = self.ensure_admin_user()
+    def set_response(self, post_id: str, payload: StatusResponseUpdate, admin: UserModel) -> PostItem:
+        post = self.get_active_post_model(post_id)
         post.status = payload.status
         post.updated_at = _utc_now()
         if post.response is None:
@@ -222,10 +207,9 @@ class PostsRepository:
         self.session.commit()
         return self.get_post(post_id)
 
-    def mark_duplicate(self, post_id: str, payload: DuplicateUpdate) -> PostItem:
-        post = self.session.get(PostModel, post_id)
-        original = self.session.get(PostModel, payload.original_post_id)
-        admin = self.ensure_admin_user()
+    def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, admin: UserModel) -> PostItem:
+        post = self.get_active_post_model(post_id)
+        original = self.get_active_post_model(payload.original_post_id)
         post.status = "duplicate"
         post.duplicate_of_id = original.id
         post.updated_at = _utc_now()
@@ -246,12 +230,24 @@ class PostsRepository:
         return self.get_post(post_id)
 
     def moderate_post(self, post_id: str, payload: ModerationUpdate) -> PostItem:
-        post = self.session.get(PostModel, post_id)
+        post = self.get_active_post_model(post_id)
         post.is_approved = payload.is_approved
         post.updated_at = _utc_now()
         self.session.add(post)
         self.session.commit()
         return self.get_post(post_id)
+
+    def archive_post(self, post_id: str, admin: UserModel) -> PostItem | None:
+        post = self.get_active_post_model(post_id)
+        if post is None:
+            return None
+        item = self._to_post_item(post)
+        post.archived_at = _utc_now()
+        post.archived_by_user_id = admin.id
+        post.updated_at = _utc_now()
+        self.session.add(post)
+        self.session.commit()
+        return item
 
     def ensure_user(self, external_id: str, name: str) -> UserModel:
         external_id = external_id or "anonymous"
@@ -276,13 +272,6 @@ class PostsRepository:
         self.session.flush()
         return user
 
-    def ensure_admin_user(self) -> UserModel:
-        user = self._get_user_by_external_id(DEFAULT_ADMIN_EXTERNAL_ID)
-        if user is None:
-            self.ensure_seed_data()
-            user = self._get_user_by_external_id(DEFAULT_ADMIN_EXTERNAL_ID)
-        return user
-
     def ensure_tag(self, name: str, color: str = "#2f75d6", is_public: bool = True) -> TagModel:
         name = name.strip()
         slug = _slugify(name)
@@ -305,7 +294,7 @@ class PostsRepository:
         return tag
 
     def _post_select(self):
-        return select(PostModel).options(
+        return select(PostModel).where(PostModel.archived_at.is_(None)).options(
             selectinload(PostModel.user),
             selectinload(PostModel.tags),
             selectinload(PostModel.votes),
@@ -335,7 +324,7 @@ class PostsRepository:
 
     def _to_post_item(self, post: PostModel) -> PostItem:
         duplicate_of = None
-        if post.duplicate_of is not None:
+        if post.duplicate_of is not None and post.duplicate_of.archived_at is None:
             duplicate_of = {
                 "id": post.duplicate_of.id,
                 "number": post.duplicate_of.number,

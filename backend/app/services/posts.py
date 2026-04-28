@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from app.repositories.posts import PostsRepository
+from app.models.post import UserModel
 from app.schemas.post import (
     ActionResult,
     CommentCreate,
@@ -46,13 +47,13 @@ class PostsService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
         return post
 
-    async def create_post(self, payload: PostCreate) -> PostItem:
-        return self.repository.create_post(payload)
+    async def create_post(self, payload: PostCreate, user: UserModel) -> PostItem:
+        return self.repository.create_post(payload, user)
 
-    async def vote_post(self, post_id: str, payload: VoteCreate) -> ActionResult:
+    async def vote_post(self, post_id: str, user: UserModel) -> ActionResult:
         await self.get_post(post_id)
         try:
-            self.repository.create_vote(post_id, payload)
+            self.repository.create_vote(post_id, user)
         except IntegrityError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -64,9 +65,9 @@ class PostsService:
         await self.get_post(post_id)
         return CommentListResponse(items=self.repository.list_comments(post_id))
 
-    async def create_comment(self, post_id: str, payload: CommentCreate) -> ActionResult:
+    async def create_comment(self, post_id: str, payload: CommentCreate, user: UserModel) -> ActionResult:
         await self.get_post(post_id)
-        self.repository.create_comment(post_id, payload)
+        self.repository.create_comment(post_id, payload, user)
         return ActionResult(message="Comment added successfully.")
 
     async def list_tags(self) -> TagListResponse:
@@ -76,17 +77,24 @@ class PostsService:
         self.repository.create_tag(payload)
         return ActionResult(message="Tag created successfully.")
 
-    async def set_response(self, post_id: str, payload: StatusResponseUpdate) -> PostItem:
+    async def set_response(self, post_id: str, payload: StatusResponseUpdate, admin: UserModel) -> PostItem:
         await self.get_post(post_id)
-        return self.repository.set_response(post_id, payload)
+        return self.repository.set_response(post_id, payload, admin)
 
-    async def mark_duplicate(self, post_id: str, payload: DuplicateUpdate) -> PostItem:
+    async def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, admin: UserModel) -> PostItem:
         if post_id == payload.original_post_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A post cannot duplicate itself.")
         await self.get_post(post_id)
         await self.get_post(payload.original_post_id)
-        return self.repository.mark_duplicate(post_id, payload)
+        return self.repository.mark_duplicate(post_id, payload, admin)
 
     async def moderate_post(self, post_id: str, payload: ModerationUpdate) -> PostItem:
         await self.get_post(post_id)
         return self.repository.moderate_post(post_id, payload)
+
+    async def archive_post(self, post_id: str, admin: UserModel) -> PostItem:
+        await self.get_post(post_id)
+        post = self.repository.archive_post(post_id, admin)
+        if post is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        return post
