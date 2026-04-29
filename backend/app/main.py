@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from app import models  # noqa: F401
+from app.api.routes.ai import router as ai_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.posts import router as posts_router, tags_router
 from app.core.config import settings
@@ -25,6 +26,7 @@ app.add_middleware(
 app.include_router(posts_router, prefix=settings.api_prefix)
 app.include_router(tags_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(ai_router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

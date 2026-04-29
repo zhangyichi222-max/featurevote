@@ -13,7 +13,7 @@ def _load_server_env_from_bashrc() -> None:
     if not bashrc_path.is_file():
         return
 
-    supported_prefixes = ("MYSQL_", "FEISHU_", "FRONTEND_")
+    supported_prefixes = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_")
     for raw_line in bashrc_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line.startswith("export ") or "=" not in line:
@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     auth_cookie_samesite: str = "lax"
     auth_token_secret: str = "dev-featurevote-change-me"
     auth_token_ttl_seconds: int = 3600
+    ollama_enabled: bool = False
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:14b"
+    ollama_timeout: float = 30
+    ollama_max_text_chars: int = 12000
+    ollama_min_text_chars: int = 20
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

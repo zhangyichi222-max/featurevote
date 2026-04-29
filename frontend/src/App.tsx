@@ -5,6 +5,7 @@ import {
   archiveRequirement,
   createComment,
   createRequirement,
+  draftRequirementWithAi,
   exchangeFeishuClientCode,
   fetchComments,
   fetchCurrentUser,
@@ -515,8 +516,38 @@ function SuggestionComposer({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [roughIdea, setRoughIdea] = useState("");
+  const [isDrafting, setIsDrafting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [draftNotice, setDraftNotice] = useState("");
+  const [isDraftError, setIsDraftError] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ComposerField, string>>>({});
+
+  async function handleDraft() {
+    const trimmedIdea = roughIdea.trim();
+    if (trimmedIdea.length < 20) {
+      setDraftNotice("请至少输入 20 个字，让 AI 有足够上下文生成需求。");
+      setIsDraftError(true);
+      return;
+    }
+
+    setIsDrafting(true);
+    setDraftNotice("");
+    setIsDraftError(false);
+    try {
+      const draft = await draftRequirementWithAi({ idea: trimmedIdea });
+      setTitle(draft.title);
+      setDescription(draft.description);
+      setFieldErrors({});
+      setSubmitError("");
+      setDraftNotice("AI 已生成草稿，你可以继续编辑后提交。");
+    } catch (error) {
+      setDraftNotice(error instanceof Error ? error.message : "AI 生成失败，请稍后重试。");
+      setIsDraftError(true);
+    } finally {
+      setIsDrafting(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -570,6 +601,30 @@ function SuggestionComposer({
             x
           </button>
         </div>
+        <section className="ai-draft-box" aria-label="AI suggestion draft">
+          <label>
+            <span>一句话想法</span>
+            <textarea
+              value={roughIdea}
+              onChange={(event) => {
+                setRoughIdea(event.target.value);
+                setDraftNotice("");
+                setIsDraftError(false);
+              }}
+              rows={3}
+              maxLength={12000}
+              placeholder="例如：希望可以按部门筛选投票结果，方便判断不同团队最关心什么"
+            />
+          </label>
+          <div className="ai-draft-actions">
+            <button className="secondary-button" type="button" onClick={handleDraft} disabled={isDrafting || isBusy}>
+              {isDrafting ? "AI 生成中..." : "AI 生成需求"}
+            </button>
+            <small className={isDraftError ? "field-error" : "field-hint"}>
+              {draftNotice || "AI 会生成标题和“问题 / 场景 / 期望结果”，提交前仍可编辑。"}
+            </small>
+          </div>
+        </section>
         <label>
           <span>Title</span>
           <input

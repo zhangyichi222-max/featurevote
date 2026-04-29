@@ -511,6 +511,25 @@ button:focus-visible {
   gap: 8px;
 }
 
+.ai-draft-box {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe7f7;
+  border-radius: 8px;
+  background: #f6f9fd;
+}
+
+.ai-draft-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-draft-actions button {
+  flex: 0 0 auto;
+}
+
 .icon-button,
 .back-button,
 .secondary-button,
@@ -729,12 +748,14 @@ button:focus-visible {
   }
 
   .suggestion-title-row,
-  .modal-actions {
+  .modal-actions,
+  .ai-draft-actions {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .modal-actions button {
+  .modal-actions button,
+  .ai-draft-actions button {
     width: 100%;
   }
 

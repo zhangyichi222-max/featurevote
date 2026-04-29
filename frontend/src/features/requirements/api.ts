@@ -102,6 +102,12 @@ export async function createRequirement(payload: {
   });
 }
 
+export async function draftRequirementWithAi(payload: {
+  idea: string;
+}) {
+  return apiClient.post<{ title: string; description: string }>("/ai/suggestion-draft", payload);
+}
+
 export async function voteRequirement(requirementId: string) {
   return apiClient.post<{ success: boolean; message: string }>(`/posts/${requirementId}/vote`);
 }
