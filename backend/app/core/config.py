@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     feishu_app_id: str = ""
     feishu_app_secret: str = ""
     feishu_redirect_uri: str = "http://192.168.200.33:8090/api/v1/auth/feishu/browser/callback"
+    feishu_admin_user_names: list[str] = []
     feishu_admin_department_ids: list[str] = []
     feishu_admin_group_ids: list[str] = []
     auth_cookie_name: str = "featurevote_session"
@@ -72,7 +73,7 @@ class Settings(BaseSettings):
     def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
         return _parse_str_list(value)
 
-    @field_validator("feishu_admin_department_ids", "feishu_admin_group_ids", mode="before")
+    @field_validator("feishu_admin_user_names", "feishu_admin_department_ids", "feishu_admin_group_ids", mode="before")
     @classmethod
     def parse_id_list(cls, value: str | list[str]) -> list[str]:
         return _parse_str_list(value)

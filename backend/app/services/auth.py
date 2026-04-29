@@ -37,7 +37,6 @@ class AuthService:
                 UserModel.feishu_open_id == profile.open_id,
             )
         )
-        role = self._role_for(profile)
         if user is None:
             user = UserModel(
                 id=uuid4().hex,
@@ -45,7 +44,7 @@ class AuthService:
                 external_id=profile.open_id,
                 feishu_open_id=profile.open_id,
                 name=profile.name,
-                role=role,
+                role="visitor",
             )
         user.external_id = profile.open_id
         user.feishu_open_id = profile.open_id
@@ -55,17 +54,9 @@ class AuthService:
         user.avatar_url = profile.avatar_url
         user.department_ids = ",".join(profile.department_ids)
         user.group_ids = ",".join(profile.group_ids)
-        user.role = role
+        if settings.feishu_admin_user_names:
+            user.role = "admin" if profile.name in settings.feishu_admin_user_names else "visitor"
         self.session.add(user)
         self.session.commit()
         self.session.refresh(user)
         return user
-
-    def _role_for(self, profile: FeishuProfile) -> str:
-        departments = set(profile.department_ids)
-        groups = set(profile.group_ids)
-        if departments.intersection(settings.feishu_admin_department_ids):
-            return "admin"
-        if groups.intersection(settings.feishu_admin_group_ids):
-            return "admin"
-        return "visitor"
