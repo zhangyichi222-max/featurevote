@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     app_port: int = 8090
     api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://192.168.200.33:5173"]
     cors_origin_regex: str | None = None
-    frontend_base_url: str = "http://localhost:5173"
+    frontend_base_url: str = "http://192.168.200.33:5173"
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_user: str = "root"
@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     mysql_database: str = "featurevote"
     feishu_app_id: str = ""
     feishu_app_secret: str = ""
-    feishu_redirect_uri: str = "http://localhost:8090/api/v1/auth/feishu/browser/callback"
+    feishu_redirect_uri: str = "http://192.168.200.33:8090/api/v1/auth/feishu/browser/callback"
     feishu_admin_department_ids: list[str] = []
     feishu_admin_group_ids: list[str] = []
     auth_cookie_name: str = "featurevote_session"
