@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import is_origin_allowed, settings
 from app.core.security import TokenError, verify_session_token
 from app.db.session import get_db_session
 from app.models.post import UserModel
@@ -49,5 +49,5 @@ def require_admin_user(
 
 def require_mutating_origin(request: Request) -> None:
     origin = request.headers.get("origin")
-    if origin not in settings.cors_origins:
+    if not is_origin_allowed(origin):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Request origin is not allowed.")
