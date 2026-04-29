@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -14,6 +16,7 @@ from app.services.auth import AuthService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 OAUTH_STATE_COOKIE = "featurevote_feishu_oauth_state"
+logger = logging.getLogger(__name__)
 
 
 @router.get("/feishu/browser/start")
@@ -21,6 +24,7 @@ async def start_browser_login(session: Session = Depends(get_db_session)) -> Red
     PostsRepository(session).ensure_seed_data()
     state = create_state_token()
     try:
+        logger.info("Starting Feishu browser login with redirect_uri=%s", settings.feishu_redirect_uri)
         url = AuthService(session).build_browser_authorization_url(state)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
