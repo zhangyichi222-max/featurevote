@@ -10,11 +10,12 @@ import {
   fetchComments,
   fetchCurrentUser,
   fetchRequirements,
+  findSimilarRequirements,
   logoutCurrentUser,
   updateRequirementStatus,
   voteRequirement,
 } from "./features/requirements/api";
-import type { CommentItem, CurrentUser, Requirement, RequirementStatus } from "./types/requirement";
+import type { CommentItem, CurrentUser, Requirement, RequirementStatus, SimilarRequirement } from "./types/requirement";
 
 type SortMode = "popular" | "newest" | "recent";
 type StatusFilter = "all" | RequirementStatus;
@@ -331,6 +332,10 @@ export default function App() {
         <SuggestionComposer
           isBusy={isBusy}
           onClose={() => setIsComposerOpen(false)}
+          onOpenExisting={(id) => {
+            setIsComposerOpen(false);
+            setSelectedId(id);
+          }}
           onSubmit={handleCreate}
         />
       ) : null}
@@ -508,20 +513,67 @@ function SuggestionListItem({
 function SuggestionComposer({
   isBusy,
   onClose,
+  onOpenExisting,
   onSubmit,
 }: {
   isBusy: boolean;
   onClose: () => void;
+  onOpenExisting: (id: string) => void;
   onSubmit: (payload: { title: string; description: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [roughIdea, setRoughIdea] = useState("");
+  const [similarItems, setSimilarItems] = useState<SimilarRequirement[]>([]);
+  const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
+  const [similarAiEnhanced, setSimilarAiEnhanced] = useState(false);
+  const [submitConfirmed, setSubmitConfirmed] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [draftNotice, setDraftNotice] = useState("");
   const [isDraftError, setIsDraftError] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ComposerField, string>>>({});
+  const hasHighSimilarity = similarItems.some((item) => item.is_high_confidence);
+
+  useEffect(() => {
+    const queryText = `${title} ${description}`.trim();
+    setSubmitConfirmed(false);
+    if (queryText.length < 5) {
+      setSimilarItems([]);
+      setSimilarAiEnhanced(false);
+      setIsCheckingSimilar(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsCheckingSimilar(true);
+    const timeoutId = window.setTimeout(() => {
+      findSimilarRequirements({ title, description, limit: 3 })
+        .then((data) => {
+          if (!isCurrent) {
+            return;
+          }
+          setSimilarItems(data.items);
+          setSimilarAiEnhanced(data.ai_enhanced);
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setSimilarItems([]);
+            setSimilarAiEnhanced(false);
+          }
+        })
+        .finally(() => {
+          if (isCurrent) {
+            setIsCheckingSimilar(false);
+          }
+        });
+    }, 400);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [description, title]);
 
   async function handleDraft() {
     const trimmedIdea = roughIdea.trim();
@@ -538,6 +590,7 @@ function SuggestionComposer({
       const draft = await draftRequirementWithAi({ idea: trimmedIdea });
       setTitle(draft.title);
       setDescription(draft.description);
+      setSubmitConfirmed(false);
       setFieldErrors({});
       setSubmitError("");
       setDraftNotice("AI 已生成草稿，你可以继续编辑后提交。");
@@ -565,6 +618,12 @@ function SuggestionComposer({
     setFieldErrors(nextFieldErrors);
     if (Object.keys(nextFieldErrors).length > 0) {
       setSubmitError("Please fix the highlighted fields before submitting.");
+      return;
+    }
+
+    if (hasHighSimilarity && !submitConfirmed) {
+      setSubmitConfirmed(true);
+      setSubmitError("Similar suggestions found. Review them, or click Submit anyway to continue.");
       return;
     }
 
@@ -631,6 +690,7 @@ function SuggestionComposer({
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
+              setSubmitConfirmed(false);
               setFieldErrors((current) => ({ ...current, title: undefined }));
               setSubmitError("");
             }}
@@ -650,6 +710,7 @@ function SuggestionComposer({
             value={description}
             onChange={(event) => {
               setDescription(event.target.value);
+              setSubmitConfirmed(false);
               setFieldErrors((current) => ({ ...current, description: undefined }));
               setSubmitError("");
             }}
@@ -662,17 +723,65 @@ function SuggestionComposer({
             {fieldErrors.description ?? "Add enough detail for the team to understand the request."}
           </small>
         </label>
+        <SimilarRequirementPrompt
+          items={similarItems}
+          isChecking={isCheckingSimilar}
+          aiEnhanced={similarAiEnhanced}
+          onOpenExisting={onOpenExisting}
+        />
         {submitError ? <div className="form-error">{submitError}</div> : null}
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancel
           </button>
           <button className="primary-button" type="submit" disabled={isBusy}>
-            {isBusy ? "Submitting..." : "Submit suggestion"}
+            {isBusy ? "Submitting..." : hasHighSimilarity && !submitConfirmed ? "Review similar suggestions" : submitConfirmed ? "Submit anyway" : "Submit suggestion"}
           </button>
         </div>
       </form>
     </div>
+  );
+}
+
+function SimilarRequirementPrompt({
+  items,
+  isChecking,
+  aiEnhanced,
+  onOpenExisting,
+}: {
+  items: SimilarRequirement[];
+  isChecking: boolean;
+  aiEnhanced: boolean;
+  onOpenExisting: (id: string) => void;
+}) {
+  if (isChecking && !items.length) {
+    return <div className="similar-suggestions-box muted">Checking for similar suggestions...</div>;
+  }
+  if (!items.length) {
+    return null;
+  }
+
+  const hasHighSimilarity = items.some((item) => item.is_high_confidence);
+  return (
+    <section className={`similar-suggestions-box ${hasHighSimilarity ? "strong" : ""}`}>
+      <div className="similar-suggestions-header">
+        <div>
+          <strong>{hasHighSimilarity ? "Similar suggestions found" : "Related suggestions"}</strong>
+          <span>{aiEnhanced ? "AI confidence included" : "Text similarity match"}</span>
+        </div>
+      </div>
+      <div className="similar-suggestions-list">
+        {items.map((item) => (
+          <button key={item.id} type="button" className="similar-suggestion-item" onClick={() => onOpenExisting(item.id)}>
+            <span className="similar-score">{Math.round(item.similarity * 100)}%</span>
+            <span className="similar-copy">
+              <strong>POST-{item.number}: {item.title}</strong>
+              <small>{item.reason || `${item.votes_count} ${item.votes_count === 1 ? "vote" : "votes"}`}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -530,6 +530,101 @@ button:focus-visible {
   flex: 0 0 auto;
 }
 
+.similar-suggestions-box {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8e4f4;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.similar-suggestions-box.strong {
+  border-color: #f2c76b;
+  background: #fff8e7;
+}
+
+.similar-suggestions-box.muted {
+  color: #64748b;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.similar-suggestions-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.similar-suggestions-header div {
+  display: grid;
+  gap: 2px;
+}
+
+.similar-suggestions-header strong {
+  color: #1f2a3a;
+}
+
+.similar-suggestions-header span {
+  color: #66758a;
+  font-size: 0.84rem;
+}
+
+.similar-suggestions-list {
+  display: grid;
+  gap: 8px;
+}
+
+.similar-suggestion-item {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+}
+
+.similar-suggestion-item:hover {
+  border-color: #2f75d6;
+}
+
+.similar-score {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  border-radius: 8px;
+  background: #e8f1ff;
+  color: #1d5fb8;
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.similar-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.similar-copy strong,
+.similar-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similar-copy strong {
+  color: #1f2a3a;
+  font-size: 0.94rem;
+}
+
+.similar-copy small {
+  color: #65748a;
+  font-size: 0.84rem;
+}
+
 .icon-button,
 .back-button,
 .secondary-button,

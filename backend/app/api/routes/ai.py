@@ -1,9 +1,18 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from app.api.deps import require_current_user, require_mutating_origin
 from app.clients.ollama import OllamaSuggestionClient
+from app.db.session import get_db_session
 from app.models.post import UserModel
-from app.schemas.ai import SuggestionDraftRequest, SuggestionDraftResponse
+from app.repositories.posts import PostsRepository
+from app.schemas.ai import (
+    SimilarRequirementsRequest,
+    SimilarRequirementsResponse,
+    SuggestionDraftRequest,
+    SuggestionDraftResponse,
+)
+from app.services.similarity import SimilarRequirementsService
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -20,3 +29,17 @@ async def draft_suggestion(
 ) -> SuggestionDraftResponse:
     _ = user
     return await OllamaSuggestionClient().draft_suggestion(payload.idea)
+
+
+@router.post(
+    "/similar-requirements",
+    response_model=SimilarRequirementsResponse,
+    dependencies=[Depends(require_mutating_origin)],
+)
+async def similar_requirements(
+    payload: SimilarRequirementsRequest,
+    user: UserModel = Depends(require_current_user),
+    session: Session = Depends(get_db_session),
+) -> SimilarRequirementsResponse:
+    _ = user
+    return await SimilarRequirementsService(PostsRepository(session)).find_similar(payload)

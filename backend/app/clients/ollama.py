@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.schemas.ai import SuggestionDraftResponse
+from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
 
 
 class OllamaSuggestionClient:
@@ -32,6 +32,18 @@ class OllamaSuggestionClient:
 
         content = await self._chat(cleaned_idea)
         return _parse_suggestion_draft(content)
+
+    async def assess_similar_requirements(
+        self,
+        title: str,
+        description: str,
+        candidates: list[SimilarRequirementItem],
+    ) -> list[SimilarRequirementItem]:
+        if not settings.ollama_enabled or not candidates:
+            return candidates
+
+        content = await self._chat_similarity(title.strip(), description.strip(), candidates)
+        return _parse_similarity_assessment(content, candidates)
 
     async def _chat(self, idea: str) -> str:
         url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
@@ -98,6 +110,74 @@ class OllamaSuggestionClient:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="AI drafting service returned an empty response.",
+            )
+        return content
+
+    async def _chat_similarity(
+        self,
+        title: str,
+        description: str,
+        candidates: list[SimilarRequirementItem],
+    ) -> str:
+        url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
+        candidate_text = "\n".join(
+            (
+                f"- id: {candidate.id}\n"
+                f"  title: {candidate.title}\n"
+                f"  description: {candidate.description[:1200]}\n"
+                f"  baseline_similarity: {candidate.similarity:.2f}"
+            )
+            for candidate in candidates
+        )
+        payload = {
+            "model": settings.ollama_model,
+            "stream": False,
+            "format": "json",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You detect duplicate feature requests for a product feedback board. "
+                        "Be conservative. Return strict JSON only: "
+                        '{"results":[{"id":"string","confidence":0.0,"reason":"short reason"}]}. '
+                        "Confidence is 0-1. High confidence means the new request and existing request ask for the same outcome."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"New request title: {title}\n"
+                        f"New request description: {description[:2000]}\n\n"
+                        f"Existing candidates:\n{candidate_text}"
+                    ),
+                },
+            ],
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI similarity service is unavailable.",
+            ) from exc
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI similarity service returned an unreadable response.",
+            ) from exc
+
+        message = data.get("message") if isinstance(data, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="AI similarity service returned an empty response.",
             )
         return content
 
@@ -181,3 +261,42 @@ def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
 def _strip_extra_headings(text: str) -> str:
     cleaned = re.sub(r"(^|\n)\s*[^：:\n]{1,16}[：:]", " ", text)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+
+def _parse_similarity_assessment(
+    content: str,
+    candidates: list[SimilarRequirementItem],
+) -> list[SimilarRequirementItem]:
+    payload = _load_json_object(content)
+    raw_results = payload.get("results", [])
+    if not isinstance(raw_results, list):
+        return candidates
+
+    assessments: dict[str, tuple[float, str | None]] = {}
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        confidence = item.get("confidence")
+        reason = item.get("reason")
+        if isinstance(item_id, str) and isinstance(confidence, (int, float)):
+            assessments[item_id] = (
+                max(0.0, min(float(confidence), 1.0)),
+                str(reason).strip() if reason else None,
+            )
+
+    enhanced: list[SimilarRequirementItem] = []
+    for candidate in candidates:
+        confidence, reason = assessments.get(candidate.id, (candidate.similarity, candidate.reason))
+        score = max(candidate.similarity, confidence)
+        enhanced.append(
+            candidate.model_copy(
+                update={
+                    "similarity": score,
+                    "is_high_confidence": score >= 0.72,
+                    "reason": reason or candidate.reason,
+                }
+            )
+        )
+    return sorted(enhanced, key=lambda item: item.similarity, reverse=True)

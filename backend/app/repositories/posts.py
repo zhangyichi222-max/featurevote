@@ -119,6 +119,15 @@ class PostsRepository:
             return None
         return self._to_post_item(post)
 
+    def list_posts_for_similarity(self) -> list[PostModel]:
+        statement = (
+            select(PostModel)
+            .where(PostModel.archived_at.is_(None), PostModel.status != "duplicate")
+            .options(selectinload(PostModel.votes))
+            .order_by(PostModel.updated_at.desc())
+        )
+        return list(self.session.scalars(statement).unique().all())
+
     def get_active_post_model(self, post_id: str) -> PostModel | None:
         return self.session.scalars(self._post_select().where(PostModel.id == post_id)).first()
 

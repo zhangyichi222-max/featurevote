@@ -13,9 +13,9 @@ from app.core.config import settings
 from app.core.security import create_session_token
 from app.db.base import Base
 from app.db.session import get_db_session
-from app.models.post import UserModel
+from app.models.post import PostModel, UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID, seed_default_data
-from app.schemas.ai import SuggestionDraftResponse
+from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
 
 
 @pytest.fixture()
@@ -37,6 +37,19 @@ def client() -> Generator[TestClient, None, None]:
                 feishu_open_id="normal-open-id",
                 name="Normal User",
                 role="visitor",
+            )
+        )
+        session.add(
+            PostModel(
+                id="export-post",
+                tenant_id=DEFAULT_TENANT_ID,
+                user_id="normal-user",
+                number=1,
+                title="Export voting results by department",
+                slug="export-voting-results-by-department",
+                description="Let admins export vote totals grouped by department as a CSV report.",
+                status="open",
+                is_approved=True,
             )
         )
         session.commit()
@@ -100,6 +113,64 @@ def test_ai_draft_returns_generated_suggestion(
 
     assert response.status_code == 200
     assert response.json()["title"] == "支持导出投票结果"
+
+
+def test_similar_requirements_uses_text_similarity_without_ollama(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/ai/similar-requirements",
+        json={
+            "title": "Department export for vote results",
+            "description": "We need a CSV export of voting totals grouped by department.",
+        },
+        cookies=_cookies("normal-user"),
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ai_enhanced"] is False
+    assert data["items"][0]["id"] == "export-post"
+    assert data["items"][0]["similarity"] > 0
+
+
+def test_similar_requirements_can_use_ollama_enhancement(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def assess_similar_requirements(
+        self,
+        title: str,
+        description: str,
+        candidates: list[SimilarRequirementItem],
+    ) -> list[SimilarRequirementItem]:
+        _ = self, title, description
+        return [
+            candidates[0].model_copy(
+                update={
+                    "similarity": 0.91,
+                    "is_high_confidence": True,
+                    "reason": "Both ask for department-level vote exports.",
+                }
+            )
+        ]
+
+    monkeypatch.setattr(OllamaSuggestionClient, "assess_similar_requirements", assess_similar_requirements)
+
+    response = client.post(
+        "/api/v1/ai/similar-requirements",
+        json={
+            "title": "Department export for vote results",
+            "description": "We need a CSV export of voting totals grouped by department.",
+        },
+        cookies=_cookies("normal-user"),
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["similarity"] == 0.91
+    assert item["is_high_confidence"] is True
+    assert item["reason"] == "Both ask for department-level vote exports."
 
 
 def _cookies(user_id: str) -> dict[str, str]:

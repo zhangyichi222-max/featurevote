@@ -4,6 +4,7 @@ import type {
   CurrentUser,
   RequirementListResponse,
   RequirementStatus,
+  SimilarRequirementsResponse,
 } from "../../types/requirement";
 
 type PostStatus = "open" | "planned" | "in_progress" | "completed" | "declined" | "duplicate";
@@ -106,6 +107,14 @@ export async function draftRequirementWithAi(payload: {
   idea: string;
 }) {
   return apiClient.post<{ title: string; description: string }>("/ai/suggestion-draft", payload);
+}
+
+export async function findSimilarRequirements(payload: {
+  title: string;
+  description: string;
+  limit?: number;
+}) {
+  return apiClient.post<SimilarRequirementsResponse>("/ai/similar-requirements", payload);
 }
 
 export async function voteRequirement(requirementId: string) {

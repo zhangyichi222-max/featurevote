@@ -25,6 +25,23 @@ export interface RequirementListResponse {
   items: Requirement[];
 }
 
+export interface SimilarRequirement {
+  id: string;
+  number: number;
+  title: string;
+  description: string;
+  status: string;
+  votes_count: number;
+  similarity: number;
+  is_high_confidence: boolean;
+  reason?: string | null;
+}
+
+export interface SimilarRequirementsResponse {
+  items: SimilarRequirement[];
+  ai_enhanced: boolean;
+}
+
 export interface CommentItem {
   id: string;
   requirement_id: string;
