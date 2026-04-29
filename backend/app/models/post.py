@@ -46,7 +46,7 @@ class UserModel(Base):
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[TenantModel] = relationship(back_populates="users")
-    posts: Mapped[list["PostModel"]] = relationship(back_populates="user")
+    posts: Mapped[list["PostModel"]] = relationship(back_populates="user", foreign_keys="PostModel.user_id")
     comments: Mapped[list["CommentModel"]] = relationship(back_populates="user")
 
 
@@ -96,7 +96,7 @@ class PostModel(Base):
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[TenantModel] = relationship(back_populates="posts")
-    user: Mapped[UserModel] = relationship(back_populates="posts")
+    user: Mapped[UserModel] = relationship(back_populates="posts", foreign_keys=[user_id])
     tags: Mapped[list[TagModel]] = relationship(secondary="post_tags", back_populates="posts")
     votes: Mapped[list["VoteModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
     comments: Mapped[list["CommentModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
