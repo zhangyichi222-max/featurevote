@@ -41,7 +41,7 @@ export FEISHU_APP_SECRET=xxx
 export FEISHU_REDIRECT_URI=http://192.168.200.33:8090/api/v1/auth/feishu/browser/callback
 
 export FRONTEND_BASE_URL=http://192.168.200.33:5173
-export FEISHU_ADMIN_USER_NAMES=张三,李四
+export FEISHU_ADMIN_OPEN_IDS=ou_xxx,ou_yyy
 ```
 
 修改后需要：
@@ -122,19 +122,19 @@ python -m alembic upgrade head
 
 ## 管理员设置
 
-最终采用“通过用户名配置管理员”的方式，不依赖飞书部门或群组。
+最终采用“通过飞书 open_id 配置管理员”的方式，不依赖飞书部门或群组。不要用飞书用户名做管理员判断，因为用户名可变，存在越权风险。
 
 配置：
 
 ```bash
-export FEISHU_ADMIN_USER_NAMES=张三,李四
+export FEISHU_ADMIN_OPEN_IDS=ou_xxx,ou_yyy
 ```
 
 规则：
 
-- 变量有值时，飞书登录用户名在名单中则为 `admin`。
+- 飞书登录用户 `open_id` 在名单中则为 `admin`。
 - 不在名单中则为 `visitor`。
-- 变量为空时，不自动改用户角色，保留数据库中已有 `role`。
+- 变量为空时，所有飞书登录用户都会被设置为 `visitor`，避免旧管理员权限残留。
 
 修改名单后，用户需要重新登录一次，后端才会更新该用户 `role`。
 
@@ -312,7 +312,7 @@ MySQL 不允许 `TEXT NOT NULL DEFAULT ''`。
 6. `users` 表是否有飞书字段。
 7. `posts` 表是否有归档字段。
 8. CORS 预检是否返回 200。
-9. `FEISHU_ADMIN_USER_NAMES` 是否包含当前飞书用户名。
+9. `FEISHU_ADMIN_OPEN_IDS` 是否包含当前飞书用户 open_id。
 
 常用检查命令：
 
@@ -321,8 +321,7 @@ cd /data/project/FeatureVote/backend
 source ~/.bashrc
 source .venv/bin/activate
 
-python -c "from app.core.config import settings; print(settings.feishu_redirect_uri); print(settings.frontend_base_url); print(settings.feishu_admin_user_names)"
+python -c "from app.core.config import settings; print(settings.feishu_redirect_uri); print(settings.frontend_base_url); print(settings.feishu_admin_open_ids)"
 python -m alembic current
 python -m alembic heads
 ```
-

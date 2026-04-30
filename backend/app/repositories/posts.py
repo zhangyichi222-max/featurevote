@@ -229,7 +229,7 @@ class PostsRepository:
             post.response.user_id = admin.id
             post.response.responded_at = _utc_now()
         if previous_status != payload.status and payload.status in NOTIFY_STATUS_VALUES:
-            self._enqueue_status_notification(post, payload.status, payload.text)
+            self._enqueue_status_notification(post, previous_status, payload.status, payload.text)
         self.session.add(post)
         self.session.commit()
         return self.get_post(post_id)
@@ -398,7 +398,13 @@ class PostsRepository:
     def _to_response_item(self, response: PostResponseModel):
         return {"text": response.text, "responded_at": response.responded_at, "user": self._to_user_item(response.user)}
 
-    def _enqueue_status_notification(self, post: PostModel, new_status: str, response_text: str) -> None:
+    def _enqueue_status_notification(
+        self,
+        post: PostModel,
+        previous_status: str,
+        new_status: str,
+        response_text: str,
+    ) -> None:
         message = "\n".join(
             [
                 "需求状态已更新",
@@ -410,7 +416,7 @@ class PostsRepository:
         self._enqueue_notification(
             post=post,
             event_type="status_changed",
-            dedupe_key=f"status:{new_status}:{post.updated_at.isoformat()}",
+            dedupe_key=f"status:{previous_status}:{new_status}",
             message=message,
         )
 

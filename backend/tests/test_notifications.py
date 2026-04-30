@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.models.post import NotificationTaskModel, UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID, HOT_VOTE_THRESHOLD, PostsRepository, seed_default_data
-from app.schemas.post import PostCreate, StatusResponseUpdate
+from app.schemas.post import DuplicateUpdate, PostCreate, StatusResponseUpdate
 from app.services.notifications import NotificationProcessor
 
 
@@ -31,6 +31,24 @@ def test_status_change_enqueues_creator_notification() -> None:
     assert "We will plan this." in task.message
 
 
+def test_duplicate_status_transition_dedupe_does_not_fail_update() -> None:
+    session = _session()
+    creator = _add_user(session, "creator", "ou_creator")
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    repo = PostsRepository(session)
+    post = repo.create_post(PostCreate(title="Need dedupe", description="Dedupe", tags=[]), creator)
+
+    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="First."), admin)
+    post_model = repo.get_active_post_model(post.id)
+    post_model.status = "open"
+    session.add(post_model)
+    session.commit()
+    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="Second."), admin)
+
+    tasks = session.scalars(select(NotificationTaskModel)).all()
+    assert len(tasks) == 1
+
+
 def test_hot_notification_enqueues_once_at_threshold() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
@@ -45,6 +63,34 @@ def test_hot_notification_enqueues_once_at_threshold() -> None:
     assert refreshed.hot_at is not None
     assert len(tasks) == 1
     assert f"当前票数：{HOT_VOTE_THRESHOLD}" in tasks[0].message
+
+
+def test_completed_and_declined_notifications_use_product_status_labels() -> None:
+    session = _session()
+    creator = _add_user(session, "creator", "ou_creator")
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    post = PostsRepository(session).create_post(PostCreate(title="Need status labels", description="Labels", tags=[]), creator)
+
+    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="completed", text="Shipped."), admin)
+    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="declined", text="Not planned."), admin)
+
+    messages = [task.message for task in session.scalars(select(NotificationTaskModel)).all()]
+    assert any("新状态：done" in message for message in messages)
+    assert any("新状态：rejected" in message for message in messages)
+
+
+def test_duplicate_and_archive_do_not_enqueue_notifications() -> None:
+    session = _session()
+    creator = _add_user(session, "creator", "ou_creator")
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    repo = PostsRepository(session)
+    original = repo.create_post(PostCreate(title="Original", description="Original", tags=[]), creator)
+    duplicate = repo.create_post(PostCreate(title="Duplicate", description="Duplicate", tags=[]), creator)
+
+    repo.mark_duplicate(duplicate.id, DuplicateUpdate(original_post_id=original.id, text="Duplicate"), admin)
+    repo.archive_post(original.id, admin)
+
+    assert session.scalars(select(NotificationTaskModel)).all() == []
 
 
 def test_notification_processor_success_and_failure_paths() -> None:
@@ -78,12 +124,30 @@ def test_notification_processor_skips_missing_open_id() -> None:
     assert task.attempts == 0
 
 
+def test_notification_processor_stops_after_three_failures() -> None:
+    session = _session()
+    task = _add_task(session, recipient_open_id="ou_fail", task_id="exhaust")
+    client = FakeFeishuClient()
+    client.raise_error = True
+
+    for _ in range(3):
+        task.next_attempt_at = None
+        task.status = "pending"
+        session.add(task)
+        session.commit()
+        NotificationProcessor(session, client).process_pending()
+
+    assert task.status == "failed"
+    assert task.attempts == 3
+    assert task.next_attempt_at is None
+
+
 class FakeFeishuClient:
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
         self.raise_error = False
 
-    def send_text_message(self, open_id: str, text: str) -> None:
+    def send_text_message(self, open_id: str, text: str, uuid: str | None = None) -> None:
         if self.raise_error:
             raise RuntimeError("boom")
         self.messages.append((open_id, text))

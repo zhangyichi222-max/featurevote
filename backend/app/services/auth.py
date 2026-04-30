@@ -53,8 +53,7 @@ class AuthService:
         user.avatar_url = profile.avatar_url
         user.department_ids = ",".join(profile.department_ids)
         user.group_ids = ",".join(profile.group_ids)
-        if settings.feishu_admin_open_ids:
-            user.role = "admin" if profile.open_id in settings.feishu_admin_open_ids else "visitor"
+        user.role = "admin" if profile.open_id in settings.feishu_admin_open_ids else "visitor"
         self.session.add(user)
         self.session.commit()
         self.session.refresh(user)

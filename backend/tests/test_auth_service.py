@@ -10,25 +10,30 @@ from app.repositories.posts import DEFAULT_TENANT_ID, seed_default_data
 from app.services.auth import AuthService
 
 
-def test_feishu_login_preserves_manually_assigned_role() -> None:
+def test_feishu_login_without_admin_allowlist_demotes_existing_admin() -> None:
+    previous_admin_open_ids = list(settings.feishu_admin_open_ids)
+    settings.feishu_admin_open_ids = []
     session = _session()
     seed_default_data(session)
-    session.add(
-        UserModel(
-            id="admin-user",
-            tenant_id=DEFAULT_TENANT_ID,
-            external_id="old-open-id",
-            feishu_open_id="admin-open-id",
-            name="Old Name",
-            role="admin",
+    try:
+        session.add(
+            UserModel(
+                id="admin-user",
+                tenant_id=DEFAULT_TENANT_ID,
+                external_id="old-open-id",
+                feishu_open_id="admin-open-id",
+                name="Old Name",
+                role="admin",
+            )
         )
-    )
-    session.commit()
+        session.commit()
 
-    user = AuthService(session).upsert_feishu_user(_profile("admin-open-id", "New Name"))
+        user = AuthService(session).upsert_feishu_user(_profile("admin-open-id", "New Name"))
 
-    assert user.name == "New Name"
-    assert user.role == "admin"
+        assert user.name == "New Name"
+        assert user.role == "visitor"
+    finally:
+        settings.feishu_admin_open_ids = previous_admin_open_ids
 
 
 def test_feishu_login_creates_new_users_as_visitors() -> None:
@@ -40,9 +45,9 @@ def test_feishu_login_creates_new_users_as_visitors() -> None:
     assert user.role == "visitor"
 
 
-def test_configured_admin_names_are_authoritative() -> None:
-    previous_admin_names = list(settings.feishu_admin_user_names)
-    settings.feishu_admin_user_names = ["Configured Admin"]
+def test_configured_admin_open_ids_are_authoritative() -> None:
+    previous_admin_open_ids = list(settings.feishu_admin_open_ids)
+    settings.feishu_admin_open_ids = ["configured-open-id"]
     try:
         session = _session()
         seed_default_data(session)
@@ -64,7 +69,7 @@ def test_configured_admin_names_are_authoritative() -> None:
         assert configured.role == "admin"
         assert removed.role == "visitor"
     finally:
-        settings.feishu_admin_user_names = previous_admin_names
+        settings.feishu_admin_open_ids = previous_admin_open_ids
 
 
 def _session():
