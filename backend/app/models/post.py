@@ -92,6 +92,7 @@ class PostModel(Base):
     duplicate_of_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id"), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(nullable=True)
     archived_by_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    hot_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
@@ -146,4 +147,32 @@ class PostResponseModel(Base):
     responded_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
 
     post: Mapped[PostModel] = relationship(back_populates="response")
+    user: Mapped[UserModel] = relationship()
+
+
+class NotificationTaskModel(Base):
+    __tablename__ = "notification_tasks"
+    __table_args__ = (
+        UniqueConstraint("post_id", "event_type", "dedupe_key", name="uq_notification_tasks_dedupe"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    recipient_open_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship()
+    post: Mapped[PostModel] = relationship()
     user: Mapped[UserModel] = relationship()

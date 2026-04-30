@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import (
     CommentModel,
+    NotificationTaskModel,
     PostModel,
     PostResponseModel,
     TagModel,
@@ -28,6 +29,11 @@ from app.schemas.post import (
 )
 
 DEFAULT_TENANT_ID = "defaulttenant000000000000000000"
+HOT_VOTE_THRESHOLD = 10
+NOTIFICATION_MAX_ATTEMPTS = 3
+NOTIFY_STATUS_VALUES = {"planned", "in_progress", "completed", "declined", "done", "rejected"}
+NOTIFICATION_STATUS_LABELS = {"completed": "done", "declined": "rejected"}
+RESPONSE_FALLBACK = "\u6682\u65e0"
 
 
 class PostsRepository:
@@ -154,9 +160,18 @@ class PostsRepository:
         return self.get_post(post.id)
 
     def create_vote(self, post_id: str, user: UserModel) -> None:
+        post = self.get_active_post_model(post_id)
         vote = VoteModel(id=uuid4().hex, post_id=post_id, user_id=user.id, created_at=_utc_now())
         self.session.add(vote)
         try:
+            self.session.flush()
+            votes_count = int(
+                self.session.scalar(select(func.count(VoteModel.id)).where(VoteModel.post_id == post_id)) or 0
+            )
+            if post is not None and post.hot_at is None and votes_count >= HOT_VOTE_THRESHOLD:
+                post.hot_at = _utc_now()
+                post.updated_at = _utc_now()
+                self._enqueue_hot_notification(post, votes_count)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
@@ -198,6 +213,7 @@ class PostsRepository:
 
     def set_response(self, post_id: str, payload: StatusResponseUpdate, admin: UserModel) -> PostItem:
         post = self.get_active_post_model(post_id)
+        previous_status = post.status
         post.status = payload.status
         post.updated_at = _utc_now()
         if post.response is None:
@@ -212,6 +228,8 @@ class PostsRepository:
             post.response.text = payload.text
             post.response.user_id = admin.id
             post.response.responded_at = _utc_now()
+        if previous_status != payload.status and payload.status in NOTIFY_STATUS_VALUES:
+            self._enqueue_status_notification(post, payload.status, payload.text)
         self.session.add(post)
         self.session.commit()
         return self.get_post(post_id)
@@ -379,6 +397,62 @@ class PostsRepository:
 
     def _to_response_item(self, response: PostResponseModel):
         return {"text": response.text, "responded_at": response.responded_at, "user": self._to_user_item(response.user)}
+
+    def _enqueue_status_notification(self, post: PostModel, new_status: str, response_text: str) -> None:
+        message = "\n".join(
+            [
+                "需求状态已更新",
+                f"标题：{post.title}",
+                f"新状态：{NOTIFICATION_STATUS_LABELS.get(new_status, new_status)}",
+                f"管理员回复：{response_text.strip() or RESPONSE_FALLBACK}",
+            ]
+        )
+        self._enqueue_notification(
+            post=post,
+            event_type="status_changed",
+            dedupe_key=f"status:{new_status}:{post.updated_at.isoformat()}",
+            message=message,
+        )
+
+    def _enqueue_hot_notification(self, post: PostModel, votes_count: int) -> None:
+        message = "\n".join(
+            [
+                "需求已变热门",
+                f"标题：{post.title}",
+                f"当前票数：{votes_count}",
+                f"热门阈值：{HOT_VOTE_THRESHOLD}",
+            ]
+        )
+        self._enqueue_notification(
+            post=post,
+            event_type="hot",
+            dedupe_key=f"hot:{HOT_VOTE_THRESHOLD}",
+            message=message,
+        )
+
+    def _enqueue_notification(self, post: PostModel, event_type: str, dedupe_key: str, message: str) -> None:
+        task = NotificationTaskModel(
+            id=uuid4().hex,
+            tenant_id=post.tenant_id,
+            post_id=post.id,
+            user_id=post.user_id,
+            recipient_open_id=post.user.feishu_open_id if post.user else None,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            message=message,
+            status="pending",
+            attempts=0,
+            max_attempts=NOTIFICATION_MAX_ATTEMPTS,
+            created_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        nested = self.session.begin_nested()
+        try:
+            self.session.add(task)
+            self.session.flush()
+            nested.commit()
+        except IntegrityError:
+            nested.rollback()
 
 
 def seed_default_data(session: Session) -> None:

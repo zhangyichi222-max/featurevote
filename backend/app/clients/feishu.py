@@ -25,8 +25,10 @@ class FeishuProfile:
 
 class FeishuClient:
     authorization_url = "https://open.feishu.cn/open-apis/authen/v1/index"
+    tenant_token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
     token_url = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
     user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+    message_url = "https://open.feishu.cn/open-apis/im/v1/messages"
 
     def build_authorization_url(self, state: str) -> str:
         if not settings.feishu_app_id or not settings.feishu_redirect_uri:
@@ -76,9 +78,40 @@ class FeishuClient:
         token = self.exchange_code(code)
         return self.get_profile(str(token["access_token"]))
 
-    def _post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def get_tenant_access_token(self) -> str:
+        if not settings.feishu_app_id or not settings.feishu_app_secret:
+            raise FeishuClientError("Feishu app credentials are not configured.")
+        data = self._post_json(
+            self.tenant_token_url,
+            {
+                "app_id": settings.feishu_app_id,
+                "app_secret": settings.feishu_app_secret,
+            },
+        )
+        token = data.get("tenant_access_token")
+        if isinstance(token, str) and token:
+            return token
+        raise FeishuClientError("Feishu tenant token response did not include tenant_access_token.")
+
+    def send_text_message(self, open_id: str, text: str, uuid: str | None = None) -> None:
+        token = self.get_tenant_access_token()
+        params = {"receive_id_type": "open_id"}
+        if uuid:
+            params["uuid"] = uuid
+        url = f"{self.message_url}?{parse.urlencode(params)}"
+        payload = {
+            "receive_id": open_id,
+            "msg_type": "text",
+            "content": json.dumps({"text": text}, ensure_ascii=False),
+        }
+        self._post_json(url, payload, bearer_token=token)
+
+    def _post_json(self, url: str, payload: dict[str, Any], bearer_token: str | None = None) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
-        req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        headers = {"Content-Type": "application/json"}
+        if bearer_token:
+            headers["Authorization"] = f"Bearer {bearer_token}"
+        req = request.Request(url, data=body, headers=headers, method="POST")
         return self._request_json(req)
 
     def _get_json(self, url: str, bearer_token: str) -> dict[str, Any]:

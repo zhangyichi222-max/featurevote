@@ -1,5 +1,6 @@
 from app.models.post import (
     CommentModel,
+    NotificationTaskModel,
     PostModel,
     PostResponseModel,
     PostTagModel,
@@ -11,6 +12,7 @@ from app.models.post import (
 
 __all__ = [
     "CommentModel",
+    "NotificationTaskModel",
     "PostModel",
     "PostResponseModel",
     "PostTagModel",

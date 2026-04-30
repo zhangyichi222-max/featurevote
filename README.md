@@ -27,7 +27,7 @@ The backend exposes a Fider-like product core under `/api/v1`:
 - `POST /posts/{post_id}/moderation` - approve or reject a post
 - `GET /tags` and `POST /tags` - list and create tags
 
-The first version uses a built-in default tenant and demo users. Login, OAuth, email, billing, attachments, notifications, and full admin settings are intentionally out of scope.
+The first version uses a built-in default tenant. Email, billing, attachments, and full admin settings are intentionally out of scope.
 
 ## Local Development
 
@@ -64,3 +64,21 @@ MYSQL_DATABASE=featurevote
 ```
 
 On startup, SQLAlchemy creates the product-core tables and seeds a default tenant, demo admin, and starter tags.
+
+## Feishu Notifications
+
+Run migrations after deploying notification changes:
+
+```bash
+cd backend
+python -m alembic upgrade head
+```
+
+Requirement status changes and first reaching 10 votes enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
+
+```bash
+cd backend
+python scripts/process_notifications.py
+```
+
+Run this command from cron, supervisor, or another operator-managed scheduler to retry pending tasks.

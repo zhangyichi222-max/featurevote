@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -11,9 +10,6 @@ from app.clients.feishu import FeishuClient, FeishuProfile
 from app.core.config import settings
 from app.models.post import UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID
-
-logger = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class AuthenticatedSession:
@@ -57,9 +53,8 @@ class AuthService:
         user.avatar_url = profile.avatar_url
         user.department_ids = ",".join(profile.department_ids)
         user.group_ids = ",".join(profile.group_ids)
-        if settings.feishu_admin_user_names:
-            logger.info("profile.name=[%s], admin_names=%s", profile.name, settings.feishu_admin_user_names)
-            user.role = "admin" if profile.name in settings.feishu_admin_user_names else "visitor"
+        if settings.feishu_admin_open_ids:
+            user.role = "admin" if profile.open_id in settings.feishu_admin_open_ids else "visitor"
         self.session.add(user)
         self.session.commit()
         self.session.refresh(user)
