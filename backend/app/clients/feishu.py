@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
-from urllib import parse, request
+from urllib import error, parse, request
 
 from app.core.config import settings
 
@@ -122,8 +122,15 @@ class FeishuClient:
         try:
             with request.urlopen(req, timeout=10) as response:
                 payload = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            detail = _read_error_body(exc)
+            raise FeishuClientError(
+                f"Feishu API request failed with HTTP {exc.code}: {detail or exc.reason}"
+            ) from exc
+        except error.URLError as exc:
+            raise FeishuClientError(f"Feishu API request failed: {exc.reason}") from exc
         except Exception as exc:  # noqa: BLE001 - convert provider failures into a stable app error.
-            raise FeishuClientError("Feishu API request failed.") from exc
+            raise FeishuClientError(f"Feishu API request failed: {exc}") from exc
         if not isinstance(payload, dict):
             raise FeishuClientError("Feishu API response was not an object.")
         code = payload.get("code")
@@ -146,3 +153,11 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if item]
     return []
+
+
+def _read_error_body(exc: error.HTTPError) -> str:
+    try:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+    except Exception:  # noqa: BLE001 - best effort diagnostic detail.
+        return ""
+    return body[:500]
