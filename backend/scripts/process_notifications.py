@@ -12,7 +12,8 @@ from app.services.notifications import NotificationProcessor
 def process_once() -> int:
     with SessionLocal() as session:
         processed = NotificationProcessor(session).process_pending()
-    print(f"Processed {processed} notification task(s).", flush=True)
+    if processed:
+        print(f"Processed {processed} notification task(s).", flush=True)
     return processed
 
 

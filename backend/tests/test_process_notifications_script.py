@@ -39,3 +39,48 @@ def test_watch_processes_then_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
         process_notifications.watch(3)
 
     assert processed == ["processed"]
+
+
+def test_process_once_is_quiet_when_no_tasks(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    class FakeProcessor:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        def process_pending(self) -> int:
+            return 0
+
+    monkeypatch.setattr(process_notifications, "NotificationProcessor", FakeProcessor)
+    monkeypatch.setattr(process_notifications, "SessionLocal", _fake_session_local)
+
+    assert process_notifications.process_once() == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_process_once_logs_when_tasks_processed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FakeProcessor:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        def process_pending(self) -> int:
+            return 2
+
+    monkeypatch.setattr(process_notifications, "NotificationProcessor", FakeProcessor)
+    monkeypatch.setattr(process_notifications, "SessionLocal", _fake_session_local)
+
+    assert process_notifications.process_once() == 2
+    assert "Processed 2 notification task(s)." in capsys.readouterr().out
+
+
+class _FakeSession:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        pass
+
+
+def _fake_session_local() -> _FakeSession:
+    return _FakeSession()
