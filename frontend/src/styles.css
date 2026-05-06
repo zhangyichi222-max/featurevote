@@ -229,7 +229,23 @@ button:focus-visible {
 
 .board-area {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+}
+
+.app-toast {
+  position: fixed;
+  top: 76px;
+  right: 24px;
+  z-index: 30;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 .filter-row {
@@ -312,17 +328,6 @@ button:focus-visible {
   background: #fef3f2;
   font-size: 0.92rem;
   font-weight: 700;
-}
-
-.sync-notice {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  border: 1px solid #dfe6f0;
-  border-radius: 8px;
-  background: #fff;
-  color: #5c697b;
 }
 
 .suggestion-list {

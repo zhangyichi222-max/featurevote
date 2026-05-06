@@ -29,45 +29,45 @@ const statusMeta: Record<
   }
 > = {
   backlog: {
-    label: "Open",
+    label: "待收集",
     tone: "neutral",
-    response: "This suggestion is open for votes and discussion.",
+    response: "这个建议正在收集投票和讨论。",
   },
   approved: {
-    label: "Planned",
+    label: "已计划",
     tone: "info",
-    response: "This suggestion has enough signal to move into planning.",
+    response: "这个建议已有足够反馈，已进入规划。",
   },
   in_progress: {
-    label: "In Progress",
+    label: "进行中",
     tone: "warning",
-    response: "The team is actively working on this suggestion.",
+    response: "团队正在处理这个建议。",
   },
   done: {
-    label: "Completed",
+    label: "已完成",
     tone: "success",
-    response: "This suggestion has shipped or has been resolved.",
+    response: "这个建议已经上线或解决。",
   },
   rejected: {
-    label: "Declined",
+    label: "暂不采纳",
     tone: "danger",
-    response: "This suggestion is not planned for the current product direction.",
+    response: "这个建议暂不符合当前产品方向。",
   },
 };
 
 const statusOrder: RequirementStatus[] = ["backlog", "approved", "in_progress", "done", "rejected"];
 
 const filterOptions: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "backlog", label: "Open" },
-  { value: "approved", label: "Planned" },
-  { value: "in_progress", label: "In progress" },
-  { value: "done", label: "Completed" },
-  { value: "rejected", label: "Declined" },
+  { value: "all", label: "全部" },
+  { value: "backlog", label: "待收集" },
+  { value: "approved", label: "已计划" },
+  { value: "in_progress", label: "进行中" },
+  { value: "done", label: "已完成" },
+  { value: "rejected", label: "暂不采纳" },
 ];
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
+  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
 function normalize(value: string) {
@@ -83,7 +83,7 @@ export default function App() {
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, CommentItem[]>>({});
-  const [notice, setNotice] = useState("Loading suggestions...");
+  const [notice, setNotice] = useState("正在加载建议...");
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -127,7 +127,7 @@ export default function App() {
   async function loadRequirements() {
     const data = await fetchRequirements();
     setItems(data.items);
-    setNotice(data.items.length ? "Suggestions synced." : "No suggestions yet. Start the board.");
+    setNotice("");
   }
 
   async function loadCurrentUser() {
@@ -138,7 +138,7 @@ export default function App() {
         setCurrentUser(null);
         return;
       }
-      setNotice(error instanceof Error ? error.message : "Could not load current user.");
+      setNotice(error instanceof Error ? error.message : "无法加载当前用户。");
     } finally {
       setIsAuthLoading(false);
     }
@@ -162,7 +162,7 @@ export default function App() {
         params.delete("feishu_client_code");
         const nextSearch = params.toString();
         window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
-        setNotice("Signed in with Feishu.");
+        setNotice("已通过飞书登录。");
       })
       .catch((error: Error) => setNotice(error.message));
   }, []);
@@ -181,7 +181,7 @@ export default function App() {
     if (currentUser) {
       return true;
     }
-    setNotice(`Sign in with Feishu to ${action}.`);
+    setNotice(`请先通过飞书登录后再${action}。`);
     return false;
   }
 
@@ -190,26 +190,26 @@ export default function App() {
     try {
       await logoutCurrentUser();
       setCurrentUser(null);
-      setNotice("Signed out. Browsing is still available.");
+      setNotice("已退出登录，仍可继续浏览。");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Sign out failed.");
+      setNotice(error instanceof Error ? error.message : "退出登录失败。");
     } finally {
       setIsBusy(false);
     }
   }
 
   async function handleCreate(payload: { title: string; description: string }) {
-    if (!requireLogin("submit suggestions")) {
-      throw new Error("Sign in required.");
+    if (!requireLogin("提交建议")) {
+      throw new Error("需要先登录。");
     }
     setIsBusy(true);
     try {
       await createRequirement(payload);
-      setNotice("Suggestion submitted.");
+      setNotice("建议已提交。");
       setIsComposerOpen(false);
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Suggestion submission failed.");
+      setNotice(error instanceof Error ? error.message : "建议提交失败。");
       throw error;
     } finally {
       setIsBusy(false);
@@ -217,16 +217,16 @@ export default function App() {
   }
 
   async function handleVote(requirementId: string) {
-    if (!requireLogin("vote")) {
+    if (!requireLogin("投票")) {
       return;
     }
     setIsBusy(true);
     try {
       await voteRequirement(requirementId);
-      setNotice("Vote recorded.");
+      setNotice("投票已记录。");
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Vote failed.");
+      setNotice(error instanceof Error ? error.message : "投票失败。");
     } finally {
       setIsBusy(false);
     }
@@ -234,13 +234,13 @@ export default function App() {
 
   async function handleStatusChange(requirementId: string, status: RequirementStatus) {
     if (!isAdmin) {
-      setNotice("Only admins can change status.");
+      setNotice("只有管理员可以修改状态。");
       return;
     }
     setIsBusy(true);
     try {
       await updateRequirementStatus(requirementId, { status });
-      setNotice(`Status changed to ${statusMeta[status].label}.`);
+      setNotice(`状态已改为${statusMeta[status].label}。`);
       await loadRequirements();
     } finally {
       setIsBusy(false);
@@ -249,24 +249,24 @@ export default function App() {
 
   async function handleArchive(requirementId: string) {
     if (!isAdmin) {
-      setNotice("Only admins can archive suggestions.");
+      setNotice("只有管理员可以归档建议。");
       return;
     }
     setIsBusy(true);
     try {
       await archiveRequirement(requirementId);
       setSelectedId(null);
-      setNotice("Suggestion archived.");
+      setNotice("建议已归档。");
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Archive failed.");
+      setNotice(error instanceof Error ? error.message : "归档失败。");
     } finally {
       setIsBusy(false);
     }
   }
 
   async function handleComment(requirementId: string, payload: { body: string }) {
-    if (!requireLogin("comment")) {
+    if (!requireLogin("评论")) {
       return;
     }
     setIsBusy(true);
@@ -274,7 +274,7 @@ export default function App() {
       await createComment(requirementId, payload);
       const data = await fetchComments(requirementId);
       setComments((current) => ({ ...current, [requirementId]: data.items }));
-      setNotice("Comment added.");
+      setNotice("评论已发布。");
     } finally {
       setIsBusy(false);
     }
@@ -290,11 +290,13 @@ export default function App() {
         onLogout={handleLogout}
       />
 
+      {notice ? <div className="app-toast" role="status">{notice}</div> : null}
+
       <section className="home-layout">
         <aside className="welcome-column">
-          <p className="eyebrow">FeatureVote</p>
-          <h1>Share feedback. Vote on what matters.</h1>
-          <p className="welcome-copy">A focused place to share feedback and vote on what matters.</p>
+          <p className="eyebrow">需求投票</p>
+          <h1>分享反馈，投出最重要的需求。</h1>
+          <p className="welcome-copy">集中收集想法、讨论优先级，让产品决策更透明。</p>
         </aside>
 
         <section className="suggestions-column">
@@ -302,13 +304,13 @@ export default function App() {
             className="new-suggestion-button"
             type="button"
             onClick={() => {
-              if (requireLogin("submit suggestions")) {
+              if (requireLogin("提交建议")) {
                 setIsComposerOpen(true);
               }
             }}
           >
             <span className="plus-icon">+</span>
-            <span>What should we build next?</span>
+            <span>你希望接下来做什么？</span>
           </button>
 
           <SuggestionBoard
@@ -317,7 +319,6 @@ export default function App() {
             statusFilter={statusFilter}
             sortMode={sortMode}
             counts={counts}
-            notice={notice}
             onQueryChange={setQuery}
             onStatusFilterChange={setStatusFilter}
             onSortChange={setSortMode}
@@ -373,24 +374,24 @@ function Header({
 }) {
   return (
     <header className="topbar">
-      <div className="brand-mark" aria-label="FeatureVote">
-        <span>F</span>
-        <strong>FeatureVote</strong>
+      <div className="brand-mark" aria-label="需求投票">
+        <span>需</span>
+        <strong>需求投票</strong>
       </div>
       <div className="auth-controls">
         {currentUser ? (
           <>
             <div className="user-pill">
               <strong>{currentUser.name}</strong>
-              <span>{currentUser.role === "admin" ? "Admin" : "Member"}</span>
+              <span>{currentUser.role === "admin" ? "管理员" : "成员"}</span>
             </div>
             <button className="secondary-button" type="button" onClick={onLogout} disabled={isBusy}>
-              Sign out
+              退出登录
             </button>
           </>
         ) : (
           <button className="primary-button" type="button" onClick={onLogin} disabled={isAuthLoading}>
-            {isAuthLoading ? "Checking..." : "Sign in with Feishu"}
+            {isAuthLoading ? "检查登录中..." : "飞书登录"}
           </button>
         )}
       </div>
@@ -404,7 +405,6 @@ function SuggestionBoard({
   statusFilter,
   sortMode,
   counts,
-  notice,
   onQueryChange,
   onStatusFilterChange,
   onSortChange,
@@ -417,7 +417,6 @@ function SuggestionBoard({
   statusFilter: StatusFilter;
   sortMode: SortMode;
   counts: Record<RequirementStatus, number>;
-  notice: string;
   onQueryChange: (value: string) => void;
   onStatusFilterChange: (value: StatusFilter) => void;
   onSortChange: (value: SortMode) => void;
@@ -428,7 +427,7 @@ function SuggestionBoard({
   return (
     <div className="board-area">
       <div className="filter-row">
-        <div className="status-tabs" aria-label="Filter by status">
+        <div className="status-tabs" aria-label="按状态筛选">
           {filterOptions.map((option) => (
             <button
               key={option.value}
@@ -443,22 +442,20 @@ function SuggestionBoard({
         </div>
         <div className="search-sort-row">
           <label className="search-box">
-            <span>Search</span>
+            <span>搜索</span>
             <input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search suggestions"
+              placeholder="搜索建议"
             />
           </label>
           <select value={sortMode} onChange={(event) => onSortChange(event.target.value as SortMode)}>
-            <option value="popular">Trending</option>
-            <option value="recent">Recently updated</option>
-            <option value="newest">Newest</option>
+            <option value="popular">热度最高</option>
+            <option value="recent">最近更新</option>
+            <option value="newest">最新提交</option>
           </select>
         </div>
       </div>
-
-      <div className="sync-notice">{notice}</div>
 
       <div className="suggestion-list">
         {items.map((item) => (
@@ -466,8 +463,8 @@ function SuggestionBoard({
         ))}
         {!items.length ? (
           <div className="empty-state">
-            <strong>No suggestions found.</strong>
-            <span>Try another filter or share the first idea.</span>
+            <strong>没有找到建议。</strong>
+            <span>换个筛选条件，或提交第一个想法。</span>
           </div>
         ) : null}
       </div>
@@ -492,16 +489,16 @@ function SuggestionListItem({
         className="vote-box"
         type="button"
         onClick={() => onVote(item.id)}
-        aria-label={canWrite ? "Vote" : "Sign in to vote"}
-        title={canWrite ? "Vote" : "Sign in to vote"}
+        aria-label={canWrite ? "投票" : "登录后投票"}
+        title={canWrite ? "投票" : "登录后投票"}
       >
         <span>^</span>
         <strong>{item.vote_count}</strong>
-        <small>{item.has_voted ? "voted" : item.vote_count === 1 ? "vote" : "votes"}</small>
+        <small>{item.has_voted ? "已投票" : "票"}</small>
       </button>
       <button className="suggestion-content" type="button" onClick={() => onSelect(item.id)}>
         <div className="suggestion-title-row">
-          <h2>{item.title}</h2>
+          <h2>分享反馈</h2>
           <StatusLozenge status={item.status} />
         </div>
         <p>{item.description}</p>
@@ -578,7 +575,7 @@ function SuggestionComposer({
   async function handleDraft() {
     const trimmedIdea = roughIdea.trim();
     if (trimmedIdea.length < 20) {
-      setDraftNotice("请至少输入 20 个字，让 AI 有足够上下文生成需求。");
+      setDraftNotice("请至少输入 20 个字，让 AI 能理解你的想法。");
       setIsDraftError(true);
       return;
     }
@@ -593,9 +590,9 @@ function SuggestionComposer({
       setSubmitConfirmed(false);
       setFieldErrors({});
       setSubmitError("");
-      setDraftNotice("AI 已生成草稿，你可以继续编辑后提交。");
+      setDraftNotice("AI 已生成标题和描述，你可以继续调整。");
     } catch (error) {
-      setDraftNotice(error instanceof Error ? error.message : "AI 生成失败，请稍后重试。");
+      setDraftNotice(error instanceof Error ? error.message : "AI 生成失败，请稍后再试。");
       setIsDraftError(true);
     } finally {
       setIsDrafting(false);
@@ -609,21 +606,21 @@ function SuggestionComposer({
     const trimmedDescription = description.trim();
 
     if (trimmedTitle.length < 3) {
-      nextFieldErrors.title = "Title must be at least 3 characters.";
+      nextFieldErrors.title = "标题至少需要 3 个字。";
     }
     if (!trimmedDescription) {
-      nextFieldErrors.description = "Description is required.";
+      nextFieldErrors.description = "请填写描述。";
     }
 
     setFieldErrors(nextFieldErrors);
     if (Object.keys(nextFieldErrors).length > 0) {
-      setSubmitError("Please fix the highlighted fields before submitting.");
+      setSubmitError("请先修正标出的内容。");
       return;
     }
 
     if (hasHighSimilarity && !submitConfirmed) {
       setSubmitConfirmed(true);
-      setSubmitError("Similar suggestions found. Review them, or click Submit anyway to continue.");
+      setSubmitError("发现相似建议。请先查看，或再次点击继续提交。");
       return;
     }
 
@@ -644,7 +641,7 @@ function SuggestionComposer({
         return;
       }
 
-      setSubmitError(error instanceof Error ? error.message : "Suggestion submission failed.");
+      setSubmitError(error instanceof Error ? error.message : "建议提交失败。");
     }
   }
 
@@ -653,16 +650,16 @@ function SuggestionComposer({
       <form className="modal-panel composer-panel" onSubmit={handleSubmit}>
         <div className="modal-header">
           <div>
-            <p className="eyebrow">New suggestion</p>
-            <h2>Share feedback</h2>
+            <p className="eyebrow">新建议</p>
+            <h2>分享反馈</h2>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
             x
           </button>
         </div>
-        <section className="ai-draft-box" aria-label="AI suggestion draft">
+        <section className="ai-draft-box" aria-label="AI 建议草稿">
           <label>
-            <span>一句话想法</span>
+            <span>先简单描述你的想法</span>
             <textarea
               value={roughIdea}
               onChange={(event) => {
@@ -677,15 +674,15 @@ function SuggestionComposer({
           </label>
           <div className="ai-draft-actions">
             <button className="secondary-button" type="button" onClick={handleDraft} disabled={isDrafting || isBusy}>
-              {isDrafting ? "AI 生成中..." : "AI 生成需求"}
+              {isDrafting ? "AI 生成中..." : "用 AI 生成建议"}
             </button>
             <small className={isDraftError ? "field-error" : "field-hint"}>
-              {draftNotice || "AI 会生成标题和“问题 / 场景 / 期望结果”，提交前仍可编辑。"}
+              {draftNotice || "AI 会根据你的描述生成标题和详细说明。"}
             </small>
           </div>
         </section>
         <label>
-          <span>Title</span>
+          <span>标题</span>
           <input
             value={title}
             onChange={(event) => {
@@ -701,11 +698,11 @@ function SuggestionComposer({
             className={fieldErrors.title ? "input-error" : ""}
           />
           <small className={fieldErrors.title ? "field-error" : "field-hint"}>
-            {fieldErrors.title ?? "Use at least 3 characters so others can understand the idea quickly."}
+            {fieldErrors.title ?? "至少 3 个字，让别人能快速理解这个想法。"}
           </small>
         </label>
         <label>
-          <span>Description</span>
+          <span>描述</span>
           <textarea
             value={description}
             onChange={(event) => {
@@ -720,7 +717,7 @@ function SuggestionComposer({
             className={fieldErrors.description ? "input-error" : ""}
           />
           <small className={fieldErrors.description ? "field-error" : "field-hint"}>
-            {fieldErrors.description ?? "Add enough detail for the team to understand the request."}
+            {fieldErrors.description ?? "补充足够细节，方便团队判断需求。"}
           </small>
         </label>
         <SimilarRequirementPrompt
@@ -732,10 +729,10 @@ function SuggestionComposer({
         {submitError ? <div className="form-error">{submitError}</div> : null}
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>
-            Cancel
+            取消
           </button>
           <button className="primary-button" type="submit" disabled={isBusy}>
-            {isBusy ? "Submitting..." : hasHighSimilarity && !submitConfirmed ? "Review similar suggestions" : submitConfirmed ? "Submit anyway" : "Submit suggestion"}
+            {isBusy ? "提交中..." : hasHighSimilarity && !submitConfirmed ? "查看相似建议" : submitConfirmed ? "仍然提交" : "提交建议"}
           </button>
         </div>
       </form>
@@ -755,7 +752,7 @@ function SimilarRequirementPrompt({
   onOpenExisting: (id: string) => void;
 }) {
   if (isChecking && !items.length) {
-    return <div className="similar-suggestions-box muted">Checking for similar suggestions...</div>;
+    return <div className="similar-suggestions-box muted">正在检查相似建议...</div>;
   }
   if (!items.length) {
     return null;
@@ -766,8 +763,8 @@ function SimilarRequirementPrompt({
     <section className={`similar-suggestions-box ${hasHighSimilarity ? "strong" : ""}`}>
       <div className="similar-suggestions-header">
         <div>
-          <strong>{hasHighSimilarity ? "Similar suggestions found" : "Related suggestions"}</strong>
-          <span>{aiEnhanced ? "AI confidence included" : "Text similarity match"}</span>
+          <strong>{hasHighSimilarity ? "发现相似建议" : "相关建议"}</strong>
+          <span>{aiEnhanced ? "已结合 AI 判断" : "文本相似度匹配"}</span>
         </div>
       </div>
       <div className="similar-suggestions-list">
@@ -776,7 +773,7 @@ function SimilarRequirementPrompt({
             <span className="similar-score">{Math.round(item.similarity * 100)}%</span>
             <span className="similar-copy">
               <strong>POST-{item.number}: {item.title}</strong>
-              <small>{item.reason || `${item.votes_count} ${item.votes_count === 1 ? "vote" : "votes"}`}</small>
+              <small>{item.reason || `${item.votes_count} 票`}</small>
             </span>
           </button>
         ))}
@@ -818,12 +815,12 @@ function SuggestionDetail({
 
   return (
     <div className="detail-backdrop" role="presentation">
-      <section className="detail-panel" aria-label="Suggestion details">
+      <section className="detail-panel" aria-label="建议详情">
         <header className="detail-header">
           <button className="back-button" type="button" onClick={onClose}>
-            &lt;- Back to suggestions
+            返回建议列表
           </button>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
             x
           </button>
         </header>
@@ -835,12 +832,12 @@ function SuggestionDetail({
             <p className="detail-description">{item.description}</p>
 
             <section className="response-box">
-              <h3>Status response</h3>
+              <h3>状态回复</h3>
               <p>{statusMeta[item.status].response}</p>
             </section>
 
             <section className="comments-section">
-              <h3>Discussion</h3>
+              <h3>讨论</h3>
               <div className="comment-list">
                 {comments.map((comment) => (
                   <article key={comment.id} className="comment-item">
@@ -849,23 +846,23 @@ function SuggestionDetail({
                     <p>{comment.body}</p>
                   </article>
                 ))}
-                {!comments.length ? <p className="comment-empty">No comments yet. Start the discussion.</p> : null}
+                {!comments.length ? <p className="comment-empty">还没有评论，来开始讨论吧。</p> : null}
               </div>
               {canWrite ? (
                 <form className="comment-form" onSubmit={handleSubmit}>
                   <textarea
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
-                    placeholder="Add a comment"
+                    placeholder="添加评论"
                     rows={4}
                     required
                   />
                   <button className="primary-button" type="submit" disabled={isBusy}>
-                    {isBusy ? "Posting..." : "Post comment"}
+                    {isBusy ? "发布中..." : "发布评论"}
                   </button>
                 </form>
               ) : (
-                <p className="comment-empty">Sign in with Feishu to join the discussion.</p>
+                <p className="comment-empty">通过飞书登录后参与讨论。</p>
               )}
             </section>
           </article>
@@ -874,12 +871,12 @@ function SuggestionDetail({
             <button className="big-vote-button" type="button" onClick={() => onVote(item.id)}>
               <span>^</span>
               <strong>{item.vote_count}</strong>
-              <small>{item.has_voted ? "voted" : item.vote_count === 1 ? "vote" : "votes"}</small>
+              <small>{item.has_voted ? "已投票" : "票"}</small>
             </button>
             {isAdmin ? (
               <div className="admin-controls">
                 <label className="status-control">
-                  <span>Status</span>
+                  <span>状态</span>
                   <select
                     value={item.status}
                     onChange={(event) => onStatusChange(item.id, event.target.value as RequirementStatus)}
@@ -892,7 +889,7 @@ function SuggestionDetail({
                   </select>
                 </label>
                 <button className="danger-button" type="button" onClick={() => onArchive(item.id)} disabled={isBusy}>
-                  Archive suggestion
+                  归档建议
                 </button>
               </div>
             ) : null}

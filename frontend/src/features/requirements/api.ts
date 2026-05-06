@@ -66,11 +66,11 @@ const postStatusToStatus: Record<PostStatus, RequirementStatus> = {
 };
 
 const statusResponseText: Record<RequirementStatus, string> = {
-  backlog: "This suggestion is open for votes and discussion.",
-  approved: "This suggestion has enough signal to move into planning.",
-  in_progress: "The team is actively working on this suggestion.",
-  done: "This suggestion has shipped or has been resolved.",
-  rejected: "This suggestion is not planned for the current product direction.",
+  backlog: "这个建议正在收集投票和讨论。",
+  approved: "这个建议已有足够反馈，已进入规划。",
+  in_progress: "团队正在处理这个建议。",
+  done: "这个建议已经上线或解决。",
+  rejected: "这个建议暂不符合当前产品方向。",
 };
 
 export async function fetchRequirements() {

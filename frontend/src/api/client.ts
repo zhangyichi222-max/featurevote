@@ -53,14 +53,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
             })
             .filter((item): item is [string, string] => item !== null),
         );
-        detail = Object.values(fieldErrors)[0] ?? "Request validation failed";
+        detail = Object.values(fieldErrors)[0] ?? "请求参数校验失败";
       } else {
         detail = parsed.detail ?? "";
       }
     } catch {
-      // Fall through to the raw response body when the server did not send JSON.
+      // Use the raw response body when the server did not send JSON.
     }
-    throw new ApiError(detail || error || "Request failed", response.status, fieldErrors);
+    throw new ApiError(detail || error || "请求失败", response.status, fieldErrors);
   }
 
   return response.json() as Promise<T>;
