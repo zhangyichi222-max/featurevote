@@ -253,17 +253,20 @@ export default function App() {
 
   async function handleArchive(requirementId: string) {
     if (!isAdmin) {
-      setNotice("只有管理员可以归档建议。");
+      setNotice("只有管理员可以删除建议。");
+      return;
+    }
+    if (!window.confirm("确定删除这条建议吗？删除后前台列表将不再显示。")) {
       return;
     }
     setIsBusy(true);
     try {
       await archiveRequirement(requirementId);
       setSelectedId(null);
-      setNotice("建议已归档。");
+      setNotice("建议已删除。");
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "归档失败。");
+      setNotice(error instanceof Error ? error.message : "删除失败。");
     } finally {
       setIsBusy(false);
     }
@@ -911,7 +914,7 @@ function SuggestionDetail({
                   </select>
                 </label>
                 <button className="danger-button" type="button" onClick={() => onArchive(item.id)} disabled={isBusy}>
-                  归档建议
+                  删除建议
                 </button>
               </div>
             ) : null}
