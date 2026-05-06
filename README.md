@@ -81,4 +81,11 @@ cd backend
 python scripts/process_notifications.py
 ```
 
-Run this command from cron, supervisor, or another operator-managed scheduler to retry pending tasks.
+For near-real-time delivery, run the worker in watch mode under systemd or supervisor:
+
+```bash
+cd backend
+python scripts/process_notifications.py --watch --interval 3
+```
+
+The one-shot command is still useful for manual retries. Watch mode keeps polling pending tasks and retries without blocking product actions.
