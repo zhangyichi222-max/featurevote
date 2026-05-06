@@ -124,6 +124,10 @@ export default function App() {
     }, {} as Record<RequirementStatus, number>);
   }, [items]);
 
+  const totalVotes = useMemo(() => {
+    return items.reduce((total, item) => total + item.vote_count, 0);
+  }, [items]);
+
   async function loadRequirements() {
     const data = await fetchRequirements();
     setItems(data.items);
@@ -297,6 +301,24 @@ export default function App() {
           <p className="eyebrow">需求投票</p>
           <h1>分享反馈，投出最重要的需求。</h1>
           <p className="welcome-copy">集中收集想法、讨论优先级，让产品决策更透明。</p>
+          <div className="welcome-metrics" aria-label="需求概览">
+            <div>
+              <strong>{items.length}</strong>
+              <span>建议</span>
+            </div>
+            <div>
+              <strong>{totalVotes}</strong>
+              <span>投票</span>
+            </div>
+            <div>
+              <strong>{counts.in_progress ?? 0}</strong>
+              <span>进行中</span>
+            </div>
+          </div>
+          <div className="welcome-status-card">
+            <span>当前看板</span>
+            <strong>{counts.backlog ?? 0} 个待收集，{counts.approved ?? 0} 个已计划</strong>
+          </div>
         </aside>
 
         <section className="suggestions-column">
