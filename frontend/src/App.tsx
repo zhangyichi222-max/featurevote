@@ -520,7 +520,7 @@ function SuggestionListItem({
       </button>
       <button className="suggestion-content" type="button" onClick={() => onSelect(item.id)}>
         <div className="suggestion-title-row">
-          <h2>分享反馈</h2>
+          <h2>{item.title}</h2>
           <StatusLozenge status={item.status} />
         </div>
         <p>{item.description}</p>
