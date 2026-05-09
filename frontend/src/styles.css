@@ -259,6 +259,13 @@
   padding: 16px 18px;
 }
 
+.task-detail-actions {
+  border-bottom: 1px solid #e6edf5;
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 18px;
+}
+
 .task-detail-key,
 .task-property-row > span,
 .task-description-panel h4 {

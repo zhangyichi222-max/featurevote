@@ -6,6 +6,7 @@ import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/t
 import {
   createTask,
   createTaskLabel,
+  deleteTask,
   fetchTaskAssignees,
   fetchTaskLabels,
   fetchTasks,
@@ -46,7 +47,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
     setSelectedTask((current) => {
       const targetId = new URLSearchParams(window.location.search).get("task");
       if (targetId) {
-        return data.items.find((item) => item.id === targetId) ?? current;
+        return data.items.find((item) => item.id === targetId) ?? null;
       }
       return current ? data.items.find((item) => item.id === current.id) ?? null : current;
     });
@@ -111,6 +112,33 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       setNotice("状态已更新。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "状态更新失败。");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleDeleteTask(task: TaskItem) {
+    if (!isAdmin) {
+      setNotice("只有管理员可以删除任务。");
+      return;
+    }
+    const sourceMessage = task.source_post ? "，并同步删除关联需求" : "";
+    if (!window.confirm(`确定删除 TASK-${task.number}${sourceMessage}吗？`)) {
+      return;
+    }
+    setIsBusy(true);
+    try {
+      await deleteTask(task.id);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("task") === task.id) {
+        params.delete("task");
+        window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+      }
+      setSelectedTask(null);
+      await loadTasks();
+      setNotice(task.source_post ? "任务已删除，关联需求已同步删除。" : "任务已删除。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "任务删除失败。");
     } finally {
       setIsBusy(false);
     }
@@ -203,6 +231,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
             setIsEditorOpen(true);
           }}
           onStatusChange={handleQuickStatus}
+          onDelete={handleDeleteTask}
         />
       </div>
 
@@ -235,12 +264,14 @@ function TaskDetail({
   isBusy,
   onEdit,
   onStatusChange,
+  onDelete,
 }: {
   task: TaskItem | null;
   currentUser: CurrentUser;
   isBusy: boolean;
   onEdit: (task: TaskItem) => void;
   onStatusChange: (task: TaskItem, status: TaskStatus) => Promise<void>;
+  onDelete: (task: TaskItem) => Promise<void>;
 }) {
   if (!task) {
     return (
@@ -251,6 +282,7 @@ function TaskDetail({
     );
   }
   const canEdit = currentUser.role === "admin" || task.assignee?.id === currentUser.id;
+  const canDelete = currentUser.role === "admin";
   return (
     <aside className="task-detail">
       <div className="task-detail-header">
@@ -260,6 +292,13 @@ function TaskDetail({
         </div>
         {canEdit ? <button className="secondary-button" type="button" onClick={() => onEdit(task)}>编辑</button> : null}
       </div>
+      {canDelete ? (
+        <div className="task-detail-actions">
+          <button className="danger-button" type="button" onClick={() => onDelete(task)} disabled={isBusy}>
+            删除
+          </button>
+        </div>
+      ) : null}
       <div className="task-properties">
         <div className="task-property-row">
           <span>状态</span>

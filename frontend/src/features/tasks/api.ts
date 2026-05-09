@@ -32,6 +32,10 @@ export async function updateTask(taskId: string, payload: Partial<TaskPayload>) 
   return apiClient.patch<TaskItem>(`/tasks/${taskId}`, payload);
 }
 
+export async function deleteTask(taskId: string) {
+  return apiClient.delete<{ success: boolean; message: string }>(`/tasks/${taskId}`);
+}
+
 export async function fetchTaskLabels() {
   return apiClient.get<TaskLabelListResponse>("/task-labels");
 }

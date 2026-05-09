@@ -143,6 +143,25 @@ def test_task_done_and_canceled_sync_source_post_status() -> None:
     assert session.get(PostModel, other_post.id).status == "declined"
 
 
+def test_delete_task_archives_task_and_source_post() -> None:
+    session = make_session()
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    post = _add_post(session, admin)
+    repo = TasksRepository(session)
+    _post, task = repo.convert_post_to_task(
+        post.id,
+        TaskCreate(title="Ship export", description_markdown="From requirement"),
+        admin,
+    )
+
+    deleted = repo.delete_task(task.id, admin)
+
+    assert deleted.id == task.id
+    assert repo.get_task(task.id) is None
+    assert session.get(PostModel, post.id).archived_at is not None
+    assert session.get(PostModel, post.id).archived_by_user_id == admin.id
+
+
 def test_upload_image_validation_and_storage() -> None:
     session = make_session()
     service = TasksService(TasksRepository(session), image_storage=FakeStorage())

@@ -155,6 +155,27 @@ class TasksRepository:
         self.session.commit()
         return self.get_task(task.id)
 
+    def delete_task(self, task_id: str, user: UserModel) -> TaskItem | None:
+        task = self.get_task_model(task_id)
+        if task is None:
+            return None
+
+        item = self._to_task_item(task)
+        deleted_at = utc_now()
+        task.archived_at = deleted_at
+        task.updated_by_user_id = user.id
+        task.updated_at = deleted_at
+
+        if task.source_post is not None and task.source_post.archived_at is None:
+            task.source_post.archived_at = deleted_at
+            task.source_post.archived_by_user_id = user.id
+            task.source_post.updated_at = deleted_at
+            self.session.add(task.source_post)
+
+        self.session.add(task)
+        self.session.commit()
+        return item
+
     def list_labels(self) -> list[TaskLabelItem]:
         labels = self.session.scalars(
             select(TaskLabelModel).where(TaskLabelModel.tenant_id == DEFAULT_TENANT_ID).order_by(TaskLabelModel.name.asc())

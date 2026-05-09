@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.api.deps import get_tasks_service, require_admin_user, require_current_user, require_mutating_origin
 from app.models.post import UserModel
+from app.schemas.post import ActionResult
 from app.schemas.task import (
     TaskAssetUploadResponse,
     TaskAssigneeListResponse,
@@ -69,6 +70,15 @@ async def update_task(
     user: UserModel = Depends(require_current_user),
 ) -> TaskItem:
     return await service.update_task(task_id, payload, user)
+
+
+@router.delete("/{task_id}", response_model=ActionResult, dependencies=[Depends(require_mutating_origin)])
+async def delete_task(
+    task_id: str,
+    service: TasksService = Depends(get_tasks_service),
+    admin: UserModel = Depends(require_admin_user),
+) -> ActionResult:
+    return await service.delete_task(task_id, admin)
 
 
 @labels_router.get("", response_model=TaskLabelListResponse)

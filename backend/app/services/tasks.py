@@ -2,6 +2,7 @@ from fastapi import HTTPException, status
 
 from app.clients.minio_storage import ALLOWED_IMAGE_TYPES, StorageConfigError, StoredImage, TaskImageStorage
 from app.models.post import UserModel
+from app.schemas.post import ActionResult
 from app.repositories.tasks import TasksRepository
 from app.schemas.task import (
     TaskAssetUploadResponse,
@@ -67,6 +68,12 @@ class TasksService:
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
         return updated
+
+    async def delete_task(self, task_id: str, admin: UserModel) -> ActionResult:
+        deleted = self.repository.delete_task(task_id, admin)
+        if deleted is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+        return ActionResult(message="Task deleted.")
 
     async def list_labels(self) -> TaskLabelListResponse:
         return TaskLabelListResponse(items=self.repository.list_labels())
