@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.api.deps import get_tasks_service, require_admin_user, require_current_user, require_mutating_origin
 from app.models.post import UserModel
@@ -100,4 +100,21 @@ async def upload_task_image(
     content_type = request.headers.get("content-type", "")
     filename = request.headers.get("x-file-name", "")
     content = await request.body()
-    return await service.upload_image(content, content_type, filename)
+    response = await service.upload_image(content, content_type, filename)
+    response.url = str(request.url_for("get_task_image", object_name=response.url))
+    return response
+
+
+@assets_router.get("/images/{object_name:path}", name="get_task_image")
+async def get_task_image(
+    object_name: str,
+    service: TasksService = Depends(get_tasks_service),
+    user: UserModel = Depends(require_current_user),
+) -> Response:
+    _ = user
+    image = await service.get_image(object_name)
+    return Response(
+        content=image.content,
+        media_type=image.content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )

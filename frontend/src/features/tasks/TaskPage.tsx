@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { ApiError } from "../../api/client";
+import { API_BASE_URL, ApiError } from "../../api/client";
 import type { CurrentUser } from "../../types/requirement";
 import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
 import {
@@ -486,12 +486,28 @@ function renderMarkdown(markdown: string) {
         const items = escaped.split("\n").map((line) => `<li>${line.replace(/^- /, "")}</li>`).join("");
         return `<ul>${items}</ul>`;
       }
-      const withImages = escaped.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<img src="$2" alt="$1" />');
-      const withLinks = withImages.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+      const urlPattern = "((?:https?:\\/\\/|\\/)[^)]+)";
+      const withImages = escaped.replace(
+        new RegExp(`!\\[([^\\]]*)\\]\\(${urlPattern}\\)`, "g"),
+        (_match: string, alt: string, url: string) => `<img src="${normalizeTaskImageUrl(url)}" alt="${alt}" />`,
+      );
+      const withLinks = withImages.replace(
+        new RegExp(`\\[([^\\]]+)\\]\\(${urlPattern}\\)`, "g"),
+        '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+      );
       const withBold = withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
       return `<p>${withBold.replace(/\n/g, "<br />")}</p>`;
     })
     .join("");
+}
+
+function normalizeTaskImageUrl(url: string) {
+  const readableUrl = url.replace(/&amp;/g, "&");
+  const objectName = readableUrl.match(/\/(?:featurevote\/)?(task-images\/[^?#]+)/)?.[1];
+  if (!objectName) {
+    return url;
+  }
+  return `${API_BASE_URL}/task-assets/images/${objectName}`;
 }
 
 function escapeHtml(value: string) {

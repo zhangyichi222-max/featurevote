@@ -1,16 +1,11 @@
 from app.clients import minio_storage
 
 
-def test_public_base_url_falls_back_to_endpoint_and_bucket(monkeypatch) -> None:
-    monkeypatch.setattr(minio_storage.settings, "minio_public_base_url", "")
-    monkeypatch.setattr(minio_storage.settings, "minio_secure", False)
-    monkeypatch.setattr(minio_storage.settings, "minio_endpoint", "192.168.8.65:9000")
-    monkeypatch.setattr(minio_storage.settings, "minio_bucket", "featurevote")
-
-    assert minio_storage._public_base_url() == "http://192.168.8.65:9000/featurevote"
+def test_content_type_from_object_name() -> None:
+    assert minio_storage._content_type_from_object_name("task-images/demo.png") == "image/png"
+    assert minio_storage._content_type_from_object_name("task-images/demo.jpg") == "image/jpeg"
+    assert minio_storage._content_type_from_object_name("task-images/demo.webp") == "image/webp"
 
 
-def test_public_base_url_prefers_explicit_value(monkeypatch) -> None:
-    monkeypatch.setattr(minio_storage.settings, "minio_public_base_url", "http://cdn.local/featurevote")
-
-    assert minio_storage._public_base_url() == "http://cdn.local/featurevote"
+def test_unknown_content_type_falls_back_to_octet_stream() -> None:
+    assert minio_storage._content_type_from_object_name("task-images/demo.bin") == "application/octet-stream"

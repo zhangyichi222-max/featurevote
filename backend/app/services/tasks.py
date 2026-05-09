@@ -1,6 +1,6 @@
 from fastapi import HTTPException, status
 
-from app.clients.minio_storage import ALLOWED_IMAGE_TYPES, StorageConfigError, TaskImageStorage
+from app.clients.minio_storage import ALLOWED_IMAGE_TYPES, StorageConfigError, StoredImage, TaskImageStorage
 from app.models.post import UserModel
 from app.repositories.tasks import TasksRepository
 from app.schemas.task import (
@@ -70,15 +70,31 @@ class TasksService:
     async def list_assignees(self) -> TaskAssigneeListResponse:
         return TaskAssigneeListResponse(items=self.repository.list_assignees())
 
-    async def upload_image(self, content: bytes, content_type: str, filename: str) -> TaskAssetUploadResponse:
+    async def upload_image(
+        self,
+        content: bytes,
+        content_type: str,
+        filename: str,
+        public_url: str | None = None,
+    ) -> TaskAssetUploadResponse:
         if not content:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image content is required.")
         if content_type.lower() not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported image type.")
         try:
-            url = self.image_storage.upload_image(content, content_type, filename)
+            object_name = self.image_storage.upload_image(content, content_type, filename)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except StorageConfigError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-        return TaskAssetUploadResponse(url=url)
+        return TaskAssetUploadResponse(url=public_url or object_name)
+
+    async def get_image(self, object_name: str) -> StoredImage:
+        try:
+            return self.image_storage.get_image(object_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except StorageConfigError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - normalize storage misses/provider failures for image tags.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found.") from exc

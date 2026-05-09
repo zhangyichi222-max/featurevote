@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 from uuid import uuid4
 
@@ -16,6 +17,12 @@ ALLOWED_IMAGE_TYPES = {
 
 class StorageConfigError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class StoredImage:
+    content: bytes
+    content_type: str
 
 
 class TaskImageStorage:
@@ -52,7 +59,32 @@ class TaskImageStorage:
             length=len(content),
             content_type=content_type,
         )
-        return f"{_public_base_url().rstrip('/')}/{object_name}"
+        return object_name
+
+    def get_image(self, object_name: str) -> StoredImage:
+        if not object_name.startswith("task-images/"):
+            raise ValueError("Unsupported image path.")
+        if not settings.minio_endpoint or not settings.minio_access_key or not settings.minio_secret_key:
+            raise StorageConfigError("MinIO is not configured.")
+        try:
+            from minio import Minio
+        except ImportError as exc:
+            raise StorageConfigError("MinIO SDK is not installed.") from exc
+
+        client = Minio(
+            settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=settings.minio_secure,
+        )
+        response = client.get_object(settings.minio_bucket, object_name)
+        try:
+            content = response.read()
+            content_type = response.headers.get("Content-Type") or _content_type_from_object_name(object_name)
+            return StoredImage(content=content, content_type=content_type)
+        finally:
+            response.close()
+            response.release_conn()
 
 
 def _extension_from_filename(filename: str) -> str:
@@ -61,8 +93,12 @@ def _extension_from_filename(filename: str) -> str:
     return filename.rsplit(".", 1)[-1].strip().lower()
 
 
-def _public_base_url() -> str:
-    if settings.minio_public_base_url:
-        return settings.minio_public_base_url
-    scheme = "https" if settings.minio_secure else "http"
-    return f"{scheme}://{settings.minio_endpoint}/{settings.minio_bucket}"
+def _content_type_from_object_name(object_name: str) -> str:
+    extension = _extension_from_filename(object_name)
+    return {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+    }.get(extension, "application/octet-stream")
