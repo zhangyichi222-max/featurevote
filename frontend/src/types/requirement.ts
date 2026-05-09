@@ -17,6 +17,12 @@ export interface Requirement {
   has_voted: boolean;
   creator_name: string;
   creator_open_id: string;
+  linked_task?: {
+    id: string;
+    number: number;
+    title: string;
+    status: string;
+  } | null;
   created_at: string;
   updated_at: string;
 }

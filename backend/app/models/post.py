@@ -106,6 +106,7 @@ class PostModel(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    linked_task: Mapped["TaskModel | None"] = relationship(back_populates="source_post", uselist=False)
     duplicate_of: Mapped["PostModel | None"] = relationship(remote_side=[id])
     archived_by: Mapped[UserModel | None] = relationship(foreign_keys=[archived_by_user_id])
 
@@ -174,7 +175,10 @@ class TaskLabelModel(Base):
 
 class TaskModel(Base):
     __tablename__ = "tasks"
-    __table_args__ = (UniqueConstraint("tenant_id", "number", name="uq_tasks_tenant_number"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_tasks_tenant_number"),
+        UniqueConstraint("tenant_id", "source_post_id", name="uq_tasks_tenant_source_post"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
@@ -182,6 +186,7 @@ class TaskModel(Base):
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     description_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="todo")
+    source_post_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
     assignee_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
     created_by_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
     updated_by_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
@@ -190,6 +195,7 @@ class TaskModel(Base):
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[TenantModel] = relationship()
+    source_post: Mapped[PostModel | None] = relationship(back_populates="linked_task")
     assignee: Mapped[UserModel | None] = relationship(foreign_keys=[assignee_user_id])
     created_by: Mapped[UserModel] = relationship(foreign_keys=[created_by_user_id])
     updated_by: Mapped[UserModel | None] = relationship(foreign_keys=[updated_by_user_id])

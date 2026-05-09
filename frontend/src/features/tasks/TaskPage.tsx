@@ -43,7 +43,13 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   async function loadTasks() {
     const data = await fetchTasks({ query, status, assigneeId, label });
     setTasks(data.items);
-    setSelectedTask((current) => (current ? data.items.find((item) => item.id === current.id) ?? null : current));
+    setSelectedTask((current) => {
+      const targetId = new URLSearchParams(window.location.search).get("task");
+      if (targetId) {
+        return data.items.find((item) => item.id === targetId) ?? current;
+      }
+      return current ? data.items.find((item) => item.id === current.id) ?? null : current;
+    });
   }
 
   async function loadMeta() {

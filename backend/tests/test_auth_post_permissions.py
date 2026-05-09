@@ -129,6 +129,38 @@ def test_user_can_write_but_not_admin_actions(client: TestClient) -> None:
     )
     assert denied.status_code == 403
 
+    convert_denied = client.post(
+        f"/api/v1/posts/{post_id}/convert-to-task",
+        json={"title": "Need comments", "description_markdown": "Work item", "labels": ["需求转入"]},
+        cookies=cookies,
+        headers=headers,
+    )
+    assert convert_denied.status_code == 403
+
+
+def test_admin_can_convert_post_to_task(client: TestClient) -> None:
+    headers = {"Origin": "http://localhost:5173"}
+    created = client.post(
+        "/api/v1/posts",
+        json={"title": "Need export", "description": "Export would help", "tags": []},
+        cookies=_cookies("normal-user"),
+        headers=headers,
+    )
+    assert created.status_code == 200
+    post_id = created.json()["id"]
+
+    converted = client.post(
+        f"/api/v1/posts/{post_id}/convert-to-task",
+        json={"title": "Build export", "description_markdown": "From requirement", "labels": ["需求转入"]},
+        cookies=_cookies("admin-user"),
+        headers=headers,
+    )
+
+    assert converted.status_code == 200
+    assert converted.json()["task"]["number"] == 1
+    assert converted.json()["post"]["status"] == "in_progress"
+    assert converted.json()["post"]["linked_task"]["id"] == converted.json()["task"]["id"]
+
 
 def test_admin_can_archive_and_normal_reads_hide_archived_post(client: TestClient) -> None:
     headers = {"Origin": "http://localhost:5173"}

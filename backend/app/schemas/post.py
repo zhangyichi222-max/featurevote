@@ -36,6 +36,13 @@ class OriginalPostItem(BaseModel):
     status: PostStatus
 
 
+class LinkedTaskItem(BaseModel):
+    id: str
+    number: int
+    title: str
+    status: str
+
+
 class PostItem(BaseModel):
     id: str
     number: int
@@ -51,6 +58,7 @@ class PostItem(BaseModel):
     tags: list[TagItem]
     response: PostResponseItem | None = None
     duplicate_of: OriginalPostItem | None = None
+    linked_task: LinkedTaskItem | None = None
     created_at: datetime
     updated_at: datetime
 

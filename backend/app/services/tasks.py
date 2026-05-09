@@ -42,6 +42,14 @@ class TasksService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
         return self.repository.create_task(payload, user)
 
+    async def convert_post_to_task(self, post_id: str, payload: TaskCreate, admin: UserModel) -> TaskItem:
+        if payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
+        post, task = self.repository.convert_post_to_task(post_id, payload, admin)
+        if post is None or task is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        return task
+
     async def update_task(self, task_id: str, payload: TaskUpdate, user: UserModel) -> TaskItem:
         task = self.repository.get_task_model(task_id)
         if task is None:

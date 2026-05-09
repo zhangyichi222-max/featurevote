@@ -18,6 +18,12 @@ export interface TaskItem {
   assignee: CurrentUser | null;
   created_by: CurrentUser;
   updated_by?: CurrentUser | null;
+  source_post?: {
+    id: string;
+    number: number;
+    title: string;
+    status: string;
+  } | null;
   labels: TaskLabel[];
   created_at: string;
   updated_at: string;

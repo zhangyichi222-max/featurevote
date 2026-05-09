@@ -328,6 +328,7 @@ class PostsRepository:
             selectinload(PostModel.comments),
             selectinload(PostModel.response).selectinload(PostResponseModel.user),
             selectinload(PostModel.duplicate_of),
+            selectinload(PostModel.linked_task),
         )
 
     def _next_post_number(self) -> int:
@@ -375,6 +376,7 @@ class PostsRepository:
             tags=[self._to_tag_item(tag) for tag in post.tags],
             response=self._to_response_item(post.response) if post.response else None,
             duplicate_of=duplicate_of,
+            linked_task=self._to_linked_task_item(post.linked_task) if post.linked_task and post.linked_task.archived_at is None else None,
             created_at=post.created_at,
             updated_at=post.updated_at,
         )
@@ -397,6 +399,9 @@ class PostsRepository:
 
     def _to_response_item(self, response: PostResponseModel):
         return {"text": response.text, "responded_at": response.responded_at, "user": self._to_user_item(response.user)}
+
+    def _to_linked_task_item(self, task):
+        return {"id": task.id, "number": task.number, "title": task.title, "status": task.status}
 
     def _enqueue_status_notification(
         self,

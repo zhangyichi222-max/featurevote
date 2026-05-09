@@ -954,6 +954,80 @@ button:focus-visible {
   width: min(920px, calc(100vw - 40px));
 }
 
+.conversion-panel {
+  display: grid;
+  gap: 14px;
+  padding: 0 22px 18px;
+}
+
+.conversion-panel .modal-header {
+  margin: 0 -22px;
+  padding: 18px 22px 14px;
+}
+
+.conversion-panel label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.conversion-panel input,
+.conversion-panel select,
+.conversion-panel textarea {
+  border: 1px solid #d8e2ef;
+  border-radius: 8px;
+  color: #25364d;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.conversion-source,
+.linked-task-card {
+  border: 1px solid #d8e2ef;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.conversion-source {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.conversion-source span {
+  color: #63758a;
+  font-size: 0.9rem;
+}
+
+.linked-task-chip {
+  align-self: flex-start;
+  border: 1px solid #b8c9dd;
+  border-radius: 999px;
+  color: #174a89;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 10px;
+  padding: 6px 9px;
+}
+
+.linked-task-card {
+  color: #25364d;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.linked-task-card span,
+.linked-task-card small {
+  color: #63758a;
+}
+
 .task-editor .modal-header {
   padding: 18px 22px 14px;
 }

@@ -9,6 +9,13 @@ from app.schemas.post import UserItem
 TaskStatus = Literal["todo", "in_progress", "blocked", "done", "canceled"]
 
 
+class TaskSourcePostItem(BaseModel):
+    id: str
+    number: int
+    title: str
+    status: str
+
+
 class TaskLabelItem(BaseModel):
     id: str
     name: str
@@ -25,6 +32,7 @@ class TaskItem(BaseModel):
     assignee: UserItem | None
     created_by: UserItem
     updated_by: UserItem | None = None
+    source_post: TaskSourcePostItem | None = None
     labels: list[TaskLabelItem]
     created_at: datetime
     updated_at: datetime
@@ -65,3 +73,4 @@ class TaskAssetUploadResponse(BaseModel):
 
 class TaskAssigneeListResponse(BaseModel):
     items: list[UserItem]
+

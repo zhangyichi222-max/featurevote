@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_posts_service, require_admin_user, require_current_user, require_mutating_origin
+from app.api.deps import get_posts_service, get_tasks_service, require_admin_user, require_current_user, require_mutating_origin
 from app.models.post import UserModel
 from app.schemas.post import (
     ActionResult,
@@ -17,6 +17,8 @@ from app.schemas.post import (
     VoteCreate,
 )
 from app.services.posts import PostsService
+from app.schemas.task import TaskCreate
+from app.services.tasks import TasksService
 
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -82,6 +84,19 @@ async def set_response(
     admin: UserModel = Depends(require_admin_user),
 ) -> PostItem:
     return await service.set_response(post_id, payload, admin)
+
+
+@router.post("/{post_id}/convert-to-task", dependencies=[Depends(require_mutating_origin)])
+async def convert_post_to_task(
+    post_id: str,
+    payload: TaskCreate,
+    posts_service: PostsService = Depends(get_posts_service),
+    tasks_service: TasksService = Depends(get_tasks_service),
+    admin: UserModel = Depends(require_admin_user),
+) -> dict[str, object]:
+    task = await tasks_service.convert_post_to_task(post_id, payload, admin)
+    post = await posts_service.get_post(post_id)
+    return {"post": post, "task": task}
 
 
 @router.post("/{post_id}/duplicate", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])

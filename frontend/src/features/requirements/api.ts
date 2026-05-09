@@ -24,6 +24,7 @@ type PostItem = {
   tags: Array<{ slug: string; name: string; color: string }>;
   response?: { text: string } | null;
   duplicate_of?: { number: number; title: string } | null;
+  linked_task?: { id: string; number: number; title: string; status: string } | null;
   created_at: string;
   updated_at: string;
 };
@@ -86,6 +87,7 @@ export async function fetchRequirements() {
       has_voted: Boolean(item.has_voted),
       creator_name: item.user.name,
       creator_open_id: item.user.id,
+      linked_task: item.linked_task ?? null,
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
@@ -130,6 +132,24 @@ export async function updateRequirementStatus(
     {
       status: statusToPostStatus[payload.status],
       text: statusResponseText[payload.status],
+    },
+  );
+}
+
+export async function convertRequirementToTask(
+  requirementId: string,
+  payload: {
+    title: string;
+    description_markdown: string;
+    assignee_user_id: string | null;
+    labels: string[];
+  },
+) {
+  return apiClient.post<{ post: PostItem; task: { id: string; number: number; title: string; status: string } }>(
+    `/posts/${requirementId}/convert-to-task`,
+    {
+      ...payload,
+      status: "todo",
     },
   );
 }

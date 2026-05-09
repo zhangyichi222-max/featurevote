@@ -1,8 +1,9 @@
 from sqlalchemy import select
 
-from app.models.post import NotificationTaskModel, UserModel
+from app.models.post import NotificationTaskModel, PostModel, UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID
 from app.repositories.tasks import TasksRepository
+from app.schemas.post import PostCreate
 from app.schemas.task import TaskCreate, TaskLabelCreate, TaskUpdate
 from app.services.tasks import TasksService
 from app.tests_support import make_session
@@ -94,6 +95,54 @@ def test_create_label_is_idempotent_by_slug() -> None:
     assert len(repo.list_labels()) == 1
 
 
+def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
+    session = make_session()
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    post = _add_post(session, admin)
+    repo = TasksRepository(session)
+
+    _post, task = repo.convert_post_to_task(
+        post.id,
+        TaskCreate(title="Ship export", description_markdown="From requirement", labels=["需求转入"]),
+        admin,
+    )
+    _post_again, task_again = repo.convert_post_to_task(
+        post.id,
+        TaskCreate(title="Different title", description_markdown="Duplicate attempt", labels=[]),
+        admin,
+    )
+
+    assert task.id == task_again.id
+    assert task.source_post.id == post.id
+    assert session.get(PostModel, post.id).status == "in_progress"
+    assert len(repo.list_tasks()) == 1
+
+
+def test_task_done_and_canceled_sync_source_post_status() -> None:
+    session = make_session()
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    post = _add_post(session, admin)
+    repo = TasksRepository(session)
+    _post, task = repo.convert_post_to_task(
+        post.id,
+        TaskCreate(title="Ship export", description_markdown="From requirement"),
+        admin,
+    )
+
+    repo.update_task(task.id, TaskUpdate(status="done"), admin, allow_admin_fields=True)
+    assert session.get(PostModel, post.id).status == "completed"
+
+    other_post = _add_post(session, admin, title="Cancel export")
+    _other_post, other_task = repo.convert_post_to_task(
+        other_post.id,
+        TaskCreate(title="Cancel export", description_markdown="From requirement"),
+        admin,
+    )
+    repo.update_task(other_task.id, TaskUpdate(status="canceled"), admin, allow_admin_fields=True)
+
+    assert session.get(PostModel, other_post.id).status == "declined"
+
+
 def test_upload_image_validation_and_storage() -> None:
     session = make_session()
     service = TasksService(TasksRepository(session), image_storage=FakeStorage())
@@ -122,6 +171,16 @@ def _add_user(session, user_id: str, open_id: str, role: str = "visitor") -> Use
     session.add(user)
     session.commit()
     return user
+
+
+def _add_post(session, user: UserModel, title: str = "Need export") -> PostModel:
+    from app.repositories.posts import PostsRepository
+
+    item = PostsRepository(session).create_post(
+        PostCreate(title=title, description="Export would help", tags=[]),
+        user,
+    )
+    return session.get(PostModel, item.id)
 
 
 def _run(coro):

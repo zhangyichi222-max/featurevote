@@ -4,6 +4,7 @@ import { ApiError, startFeishuBrowserLogin } from "./api/client";
 import { TaskPage } from "./features/tasks/TaskPage";
 import {
   archiveRequirement,
+  convertRequirementToTask,
   createComment,
   createRequirement,
   draftRequirementWithAi,
@@ -16,6 +17,7 @@ import {
   updateRequirementStatus,
   voteRequirement,
 } from "./features/requirements/api";
+import { fetchTaskAssignees } from "./features/tasks/api";
 import type { CommentItem, CurrentUser, Requirement, RequirementStatus, SimilarRequirement } from "./types/requirement";
 
 type SortMode = "popular" | "newest" | "recent";
@@ -91,6 +93,7 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [conversionItem, setConversionItem] = useState<Requirement | null>(null);
   const [activeView, setActiveView] = useState<AppView>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("view") === "tasks" ? "tasks" : "requirements";
@@ -248,6 +251,11 @@ export default function App() {
       setNotice("只有管理员可以修改状态。");
       return;
     }
+    const item = items.find((entry) => entry.id === requirementId);
+    if (status === "in_progress" && item && !item.linked_task) {
+      setConversionItem(item);
+      return;
+    }
     setIsBusy(true);
     try {
       await updateRequirementStatus(requirementId, { status });
@@ -256,6 +264,38 @@ export default function App() {
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function handleConvertToTask(payload: {
+    title: string;
+    description_markdown: string;
+    assignee_user_id: string | null;
+    labels: string[];
+  }) {
+    if (!conversionItem) {
+      return;
+    }
+    setIsBusy(true);
+    try {
+      const result = await convertRequirementToTask(conversionItem.id, payload);
+      setNotice(`已创建 TASK-${result.task.number}，需求已进入处理中。`);
+      setConversionItem(null);
+      await loadRequirements();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "转为任务失败。");
+      throw error;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function openLinkedTask(taskId: string) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", "tasks");
+    params.set("task", taskId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    setActiveView("tasks");
+    setSelectedId(null);
   }
 
   async function handleArchive(requirementId: string) {
@@ -401,9 +441,19 @@ export default function App() {
           onVote={handleVote}
           onStatusChange={handleStatusChange}
           onArchive={handleArchive}
+          onOpenTask={openLinkedTask}
           onComment={handleComment}
           canWrite={Boolean(currentUser)}
           isAdmin={isAdmin}
+        />
+      ) : null}
+
+      {conversionItem ? (
+        <RequirementTaskModal
+          item={conversionItem}
+          isBusy={isBusy}
+          onClose={() => setConversionItem(null)}
+          onSubmit={handleConvertToTask}
         />
       ) : null}
     </main>
@@ -576,6 +626,9 @@ function SuggestionListItem({
           <StatusLozenge status={item.status} />
         </div>
         <p>{item.description}</p>
+        {item.linked_task ? (
+          <span className="linked-task-chip">TASK-{item.linked_task.number}</span>
+        ) : null}
       </button>
     </article>
   );
@@ -975,6 +1028,7 @@ function SuggestionDetail({
   onVote,
   onStatusChange,
   onArchive,
+  onOpenTask,
   onComment,
   canWrite,
   isAdmin,
@@ -986,6 +1040,7 @@ function SuggestionDetail({
   onVote: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
+  onOpenTask: (taskId: string) => void;
   onComment: (id: string, payload: { body: string }) => Promise<void>;
   canWrite: boolean;
   isAdmin: boolean;
@@ -1014,6 +1069,13 @@ function SuggestionDetail({
           <article className="detail-main">
             <StatusLozenge status={item.status} />
             <h2>{item.title}</h2>
+            {item.linked_task ? (
+              <button className="linked-task-card" type="button" onClick={() => onOpenTask(item.linked_task!.id)}>
+                <span>关联任务</span>
+                <strong>TASK-{item.linked_task.number}</strong>
+                <small>{item.linked_task.title}</small>
+              </button>
+            ) : null}
             <p className="detail-description">{item.description}</p>
 
             <section className="response-box">
@@ -1081,6 +1143,110 @@ function SuggestionDetail({
           </aside>
         </div>
       </section>
+    </div>
+  );
+}
+
+function RequirementTaskModal({
+  item,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  item: Requirement;
+  isBusy: boolean;
+  onClose: () => void;
+  onSubmit: (payload: {
+    title: string;
+    description_markdown: string;
+    assignee_user_id: string | null;
+    labels: string[];
+  }) => Promise<void>;
+}) {
+  const defaultDescription = [
+    item.description,
+    "",
+    `来源需求：${item.req_id}`,
+    `当前票数：${item.vote_count}`,
+    `提交人：${item.creator_name}`,
+    `链接：/?post=${item.id}`,
+  ].join("\n");
+  const [title, setTitle] = useState(item.title);
+  const [description, setDescription] = useState(defaultDescription);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [labels, setLabels] = useState("需求转入");
+  const [assignees, setAssignees] = useState<CurrentUser[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchTaskAssignees()
+      .then((data) => setAssignees(data.items))
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await onSubmit({
+        title: title.trim(),
+        description_markdown: description,
+        assignee_user_id: assigneeId || null,
+        labels: labels
+          .split(",")
+          .map((label) => label.trim())
+          .filter(Boolean),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建任务失败。");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="modal-panel conversion-panel" onSubmit={handleSubmit}>
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">转为任务</p>
+            <h2>{item.req_id}</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
+            x
+          </button>
+        </div>
+        <div className="conversion-source">
+          <strong>{item.title}</strong>
+          <span>{item.vote_count} 票 · {item.creator_name}</span>
+        </div>
+        <label>
+          <span>任务标题</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} minLength={3} maxLength={160} required />
+        </label>
+        <label>
+          <span>负责人</span>
+          <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
+            <option value="">暂不分配</option>
+            {assignees.map((user) => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>标签</span>
+          <input value={labels} onChange={(event) => setLabels(event.target.value)} placeholder="需求转入, 前端" />
+        </label>
+        <label>
+          <span>描述</span>
+          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={9} />
+        </label>
+        {error ? <div className="form-error">{error}</div> : null}
+        <div className="modal-actions">
+          <button className="secondary-button" type="button" onClick={onClose}>取消</button>
+          <button className="primary-button" type="submit" disabled={isBusy}>
+            {isBusy ? "创建中..." : "创建任务并开始处理"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
