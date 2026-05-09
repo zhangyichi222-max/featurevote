@@ -22,8 +22,6 @@ class TaskImageStorage:
     def upload_image(self, content: bytes, content_type: str, filename: str = "") -> str:
         if not settings.minio_endpoint or not settings.minio_access_key or not settings.minio_secret_key:
             raise StorageConfigError("MinIO is not configured.")
-        if not settings.minio_public_base_url:
-            raise StorageConfigError("MINIO_PUBLIC_BASE_URL is not configured.")
         if len(content) > settings.task_image_max_bytes:
             raise ValueError("Image is too large.")
 
@@ -54,10 +52,17 @@ class TaskImageStorage:
             length=len(content),
             content_type=content_type,
         )
-        return f"{settings.minio_public_base_url.rstrip('/')}/{object_name}"
+        return f"{_public_base_url().rstrip('/')}/{object_name}"
 
 
 def _extension_from_filename(filename: str) -> str:
     if "." not in filename:
         return ""
     return filename.rsplit(".", 1)[-1].strip().lower()
+
+
+def _public_base_url() -> str:
+    if settings.minio_public_base_url:
+        return settings.minio_public_base_url
+    scheme = "https" if settings.minio_secure else "http"
+    return f"{scheme}://{settings.minio_endpoint}/{settings.minio_bucket}"

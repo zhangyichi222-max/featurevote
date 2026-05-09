@@ -24,7 +24,7 @@ def _load_server_env_from_bashrc() -> None:
         if not key.startswith(supported_prefixes):
             continue
         value = value.strip().strip("\"'")
-        os.environ.setdefault(key, value)
+        os.environ[key] = value
 
 
 _load_server_env_from_bashrc()
@@ -107,6 +107,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    _load_server_env_from_bashrc()
     return Settings()
 
 
