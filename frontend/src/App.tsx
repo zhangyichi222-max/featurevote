@@ -654,6 +654,8 @@ function SuggestionComposer({
     descriptionRequired: "\u8bf7\u8865\u5145\u9700\u6c42\u63cf\u8ff0\u3002",
     fixFields: "\u8bf7\u5148\u4fee\u6b63\u6807\u51fa\u7684\u5185\u5bb9\u3002",
     similarFound: "\u53d1\u73b0\u7c7b\u4f3c\u9700\u6c42\u3002\u4f60\u53ef\u4ee5\u5148\u67e5\u770b\u5df2\u6709\u9700\u6c42\uff0c\u6216\u518d\u6b21\u70b9\u51fb\u63d0\u4ea4\u3002",
+    similarCheckFailed: "\u67e5\u91cd\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002",
+    noSimilarFound: "\u672a\u53d1\u73b0\u660e\u663e\u91cd\u590d\u9700\u6c42\u3002",
     submitFailed: "\u5efa\u8bae\u63d0\u4ea4\u5931\u8d25\u3002",
     newSuggestion: "\u65b0\u5efa\u8bae",
     ideaTitle: "\u60f3\u63d0\u4ec0\u4e48\u9700\u6c42\uff1f",
@@ -676,6 +678,9 @@ function SuggestionComposer({
     back: "\u8fd4\u56de",
     submitting: "\u63d0\u4ea4\u4e2d...",
     confirmSimilar: "\u786e\u8ba4\u7c7b\u4f3c\u9700\u6c42",
+    checkSimilar: "\u624b\u52a8\u67e5\u91cd",
+    checkingSimilar: "\u67e5\u91cd\u4e2d...",
+    checkAgain: "\u91cd\u65b0\u67e5\u91cd",
     submitAnyway: "\u4ecd\u7136\u63d0\u4ea4",
     submit: "\u63d0\u4ea4\u5efa\u8bae",
   };
@@ -694,53 +699,6 @@ function SuggestionComposer({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ComposerField, string>>>({});
   const hasHighSimilarity = similarItems.some((item) => item.is_high_confidence);
   const canRegenerate = Boolean(roughIdea.trim());
-
-  useEffect(() => {
-    if (step !== "draft") {
-      setSimilarItems([]);
-      setSimilarAiEnhanced(false);
-      setIsCheckingSimilar(false);
-      return;
-    }
-
-    const queryText = [title, description].join(" ").trim();
-    setSubmitConfirmed(false);
-    if (queryText.length < 5) {
-      setSimilarItems([]);
-      setSimilarAiEnhanced(false);
-      setIsCheckingSimilar(false);
-      return;
-    }
-
-    let isCurrent = true;
-    setIsCheckingSimilar(true);
-    const timeoutId = window.setTimeout(() => {
-      findSimilarRequirements({ title, description, limit: 3 })
-        .then((data) => {
-          if (!isCurrent) {
-            return;
-          }
-          setSimilarItems(data.items);
-          setSimilarAiEnhanced(data.ai_enhanced);
-        })
-        .catch(() => {
-          if (isCurrent) {
-            setSimilarItems([]);
-            setSimilarAiEnhanced(false);
-          }
-        })
-        .finally(() => {
-          if (isCurrent) {
-            setIsCheckingSimilar(false);
-          }
-        });
-    }, 400);
-
-    return () => {
-      isCurrent = false;
-      window.clearTimeout(timeoutId);
-    };
-  }, [description, step, title]);
 
   async function handleDraft() {
     const trimmedIdea = roughIdea.trim();
@@ -789,6 +747,44 @@ function SuggestionComposer({
     setStep("idea");
     setSubmitError("");
     setFieldErrors({});
+    setSimilarItems([]);
+    setSimilarAiEnhanced(false);
+    setSubmitConfirmed(false);
+  }
+
+  async function handleSimilarityCheck() {
+    const trimmedTitle = title.trim();
+    const trimmedDescription = description.trim();
+    const nextFieldErrors: Partial<Record<ComposerField, string>> = {};
+
+    if (trimmedTitle.length < 3) {
+      nextFieldErrors.title = copy.titleTooShort;
+    }
+    if (!trimmedDescription) {
+      nextFieldErrors.description = copy.descriptionRequired;
+    }
+
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setSubmitError(copy.fixFields);
+      return;
+    }
+
+    setIsCheckingSimilar(true);
+    setSubmitConfirmed(false);
+    setSubmitError("");
+    try {
+      const data = await findSimilarRequirements({ title: trimmedTitle, description: trimmedDescription, limit: 3 });
+      setSimilarItems(data.items);
+      setSimilarAiEnhanced(data.ai_enhanced);
+      setSubmitError(data.items.length ? "" : copy.noSimilarFound);
+    } catch (error) {
+      setSimilarItems([]);
+      setSimilarAiEnhanced(false);
+      setSubmitError(error instanceof Error ? error.message : copy.similarCheckFailed);
+    } finally {
+      setIsCheckingSimilar(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -925,6 +921,8 @@ function SuggestionComposer({
             onChange={(event) => {
               setTitle(event.target.value);
               setSubmitConfirmed(false);
+              setSimilarItems([]);
+              setSimilarAiEnhanced(false);
               setFieldErrors((current) => ({ ...current, title: undefined }));
               setSubmitError("");
             }}
@@ -946,6 +944,8 @@ function SuggestionComposer({
             onChange={(event) => {
               setDescription(event.target.value);
               setSubmitConfirmed(false);
+              setSimilarItems([]);
+              setSimilarAiEnhanced(false);
               setFieldErrors((current) => ({ ...current, description: undefined }));
               setSubmitError("");
             }}
@@ -958,6 +958,11 @@ function SuggestionComposer({
             {fieldErrors.description ?? copy.descriptionHint}
           </small>
         </label>
+        <div className="similar-check-actions">
+          <button className="secondary-button" type="button" onClick={handleSimilarityCheck} disabled={isCheckingSimilar || isBusy}>
+            {isCheckingSimilar ? copy.checkingSimilar : similarItems.length ? copy.checkAgain : copy.checkSimilar}
+          </button>
+        </div>
         <SimilarRequirementPrompt
           items={similarItems}
           isChecking={isCheckingSimilar}
