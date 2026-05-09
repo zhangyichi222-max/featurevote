@@ -206,7 +206,7 @@
 }
 
 .task-editor {
-  width: min(780px, calc(100vw - 24px));
+  width: min(920px, calc(100vw - 40px));
 }
 
 .task-editor-grid {
@@ -254,14 +254,14 @@
 }
 
 .markdown-editor textarea {
-  min-height: 220px;
+  min-height: 180px;
   resize: vertical;
 }
 
 .markdown-preview {
   border: 1px solid #d8e2ef;
   border-radius: 8px;
-  min-height: 220px;
+  min-height: 180px;
   padding: 14px;
 }
 
@@ -814,6 +814,74 @@ button:focus-visible {
   max-height: calc(100vh - 48px);
   overflow: auto;
   border-radius: 8px;
+}
+
+.modal-panel.task-editor {
+  display: grid;
+  gap: 0;
+  max-height: calc(100vh - 56px);
+  padding: 0;
+  width: min(920px, calc(100vw - 40px));
+}
+
+.task-editor .modal-header {
+  padding: 18px 22px 14px;
+}
+
+.task-editor > label,
+.task-editor > .task-editor-grid,
+.task-editor > .markdown-editor,
+.task-editor > .form-error {
+  margin: 0 22px 14px;
+}
+
+.task-editor > label {
+  display: grid;
+  gap: 8px;
+}
+
+.task-editor .modal-actions {
+  border-top: 1px solid #e6edf5;
+  padding: 14px 22px;
+}
+
+.task-editor .label-picker {
+  align-items: center;
+}
+
+.task-editor .label-choice {
+  align-items: center;
+  display: inline-flex;
+  flex-direction: row;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  width: auto;
+}
+
+.task-editor .label-choice input {
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  width: 18px;
+}
+
+.task-editor .new-label-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.task-editor .markdown-toolbar {
+  border: 1px solid #d8e2ef;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  gap: 4px;
+  padding: 6px;
+}
+
+.task-editor .markdown-editor textarea,
+.task-editor .markdown-preview {
+  border-radius: 0 0 8px 8px;
 }
 
 .composer-panel {
