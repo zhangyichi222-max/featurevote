@@ -153,16 +153,39 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       </div>
 
       <div className="task-layout">
-        <div className="task-list">
-          {tasks.map((task) => (
-            <button key={task.id} className="task-row" type="button" onClick={() => setSelectedTask(task)}>
-              <span className={`task-status status-${task.status}`}>{statusLabels[task.status]}</span>
-              <strong>TASK-{task.number}: {task.title}</strong>
-              <span>{task.assignee?.name ?? "未分配"}</span>
-              <span className="task-labels">{task.labels.map((item) => <small key={item.id} style={{ borderColor: item.color }}>{item.name}</small>)}</span>
-            </button>
-          ))}
-          {!tasks.length ? <div className="task-empty">暂无任务。</div> : null}
+        <div className="task-main-pane">
+          <div className="task-list-header">
+            <span>状态</span>
+            <span>任务</span>
+            <span>负责人</span>
+            <span>标签</span>
+          </div>
+          <div className="task-list">
+            {tasks.map((task) => (
+              <button
+                key={task.id}
+                className={`task-row ${selectedTask?.id === task.id ? "selected" : ""}`}
+                type="button"
+                onClick={() => setSelectedTask(task)}
+              >
+                <span className={`task-status status-${task.status}`}>{statusLabels[task.status]}</span>
+                <span className="task-title-cell">
+                  <strong>TASK-{task.number}</strong>
+                  <span>{task.title}</span>
+                </span>
+                <span className="task-assignee-cell">{task.assignee?.name ?? "未分配"}</span>
+                <span className="task-labels">
+                  {task.labels.map((item) => (
+                    <small key={item.id} style={{ borderColor: item.color }}>
+                      <span className="label-dot" style={{ backgroundColor: item.color }} />
+                      {item.name}
+                    </small>
+                  ))}
+                </span>
+              </button>
+            ))}
+            {!tasks.length ? <div className="task-empty">暂无任务。</div> : null}
+          </div>
         </div>
 
         <TaskDetail
@@ -214,31 +237,60 @@ function TaskDetail({
   onStatusChange: (task: TaskItem, status: TaskStatus) => Promise<void>;
 }) {
   if (!task) {
-    return <aside className="task-detail task-empty">选择一个任务查看详情。</aside>;
+    return (
+      <aside className="task-detail task-detail-empty">
+        <h3>任务详情</h3>
+        <p>选择一个任务查看详情。</p>
+      </aside>
+    );
   }
   const canEdit = currentUser.role === "admin" || task.assignee?.id === currentUser.id;
   return (
     <aside className="task-detail">
       <div className="task-detail-header">
-        <span className={`task-status status-${task.status}`}>{statusLabels[task.status]}</span>
+        <div>
+          <span className="task-detail-key">TASK-{task.number}</span>
+          <h3>{task.title}</h3>
+        </div>
         {canEdit ? <button className="secondary-button" type="button" onClick={() => onEdit(task)}>编辑</button> : null}
       </div>
-      <h3>TASK-{task.number}: {task.title}</h3>
-      <dl className="task-meta">
-        <div><dt>负责人</dt><dd>{task.assignee?.name ?? "未分配"}</dd></div>
-        <div><dt>创建人</dt><dd>{task.created_by.name}</dd></div>
-      </dl>
-      <div className="task-labels detail-labels">
-        {task.labels.map((item) => <small key={item.id} style={{ borderColor: item.color }}>{item.name}</small>)}
+      <div className="task-properties">
+        <div className="task-property-row">
+          <span>状态</span>
+          {canEdit ? (
+            <select value={task.status} onChange={(event) => onStatusChange(task, event.target.value as TaskStatus)} disabled={isBusy}>
+              {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => (
+                <option key={item} value={item}>{statusLabels[item]}</option>
+              ))}
+            </select>
+          ) : (
+            <strong className={`task-status status-${task.status}`}>{statusLabels[task.status]}</strong>
+          )}
+        </div>
+        <div className="task-property-row">
+          <span>负责人</span>
+          <strong>{task.assignee?.name ?? "未分配"}</strong>
+        </div>
+        <div className="task-property-row">
+          <span>创建人</span>
+          <strong>{task.created_by.name}</strong>
+        </div>
+        <div className="task-property-row task-property-labels">
+          <span>标签</span>
+          <div className="task-labels detail-labels">
+            {task.labels.length ? task.labels.map((item) => (
+              <small key={item.id} style={{ borderColor: item.color }}>
+                <span className="label-dot" style={{ backgroundColor: item.color }} />
+                {item.name}
+              </small>
+            )) : <em>无</em>}
+          </div>
+        </div>
       </div>
-      {canEdit ? (
-        <select value={task.status} onChange={(event) => onStatusChange(task, event.target.value as TaskStatus)} disabled={isBusy}>
-          {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => (
-            <option key={item} value={item}>{statusLabels[item]}</option>
-          ))}
-        </select>
-      ) : null}
-      <MarkdownPreview markdown={task.description_markdown} />
+      <section className="task-description-panel">
+        <h4>描述</h4>
+        <MarkdownPreview markdown={task.description_markdown || "暂无描述。"} />
+      </section>
     </aside>
   );
 }
@@ -342,6 +394,7 @@ function TaskEditor({
                     );
                   }}
                 />
+                <span className="label-dot" style={{ backgroundColor: item.color }} />
                 {item.name}
               </label>
             ))}
