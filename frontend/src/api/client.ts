@@ -73,6 +73,20 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  patch: <T>(path: string, body: unknown = {}) =>
+    request<T>(path, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  upload: <T>(path: string, file: File) =>
+    request<T>(path, {
+      method: "POST",
+      body: file,
+      headers: {
+        "Content-Type": file.type,
+        "X-File-Name": encodeURIComponent(file.name),
+      },
+    }),
 };
 
 export function startFeishuBrowserLogin() {

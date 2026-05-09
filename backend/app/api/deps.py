@@ -6,7 +6,9 @@ from app.core.security import TokenError, verify_session_token
 from app.db.session import get_db_session
 from app.models.post import UserModel
 from app.repositories.posts import PostsRepository
+from app.repositories.tasks import TasksRepository
 from app.services.posts import PostsService
+from app.services.tasks import TasksService
 
 
 def get_posts_service(
@@ -15,6 +17,12 @@ def get_posts_service(
     repository = PostsRepository(session)
     repository.ensure_seed_data()
     return PostsService(repository)
+
+
+def get_tasks_service(
+    session: Session = Depends(get_db_session),
+) -> TasksService:
+    return TasksService(TasksRepository(session))
 
 
 def get_current_user_optional(

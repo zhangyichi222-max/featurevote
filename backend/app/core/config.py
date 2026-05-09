@@ -13,7 +13,7 @@ def _load_server_env_from_bashrc() -> None:
     if not bashrc_path.is_file():
         return
 
-    supported_prefixes = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_")
+    supported_prefixes = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_")
     for raw_line in bashrc_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line.startswith("export ") or "=" not in line:
@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     ollama_timeout: float = 30
     ollama_max_text_chars: int = 12000
     ollama_min_text_chars: int = 20
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = "featurevote"
+    minio_public_base_url: str = ""
+    minio_secure: bool = False
+    task_image_max_bytes: int = 5 * 1024 * 1024
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

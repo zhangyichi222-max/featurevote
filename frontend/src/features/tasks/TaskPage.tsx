@@ -1,0 +1,450 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+import { ApiError } from "../../api/client";
+import type { CurrentUser } from "../../types/requirement";
+import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
+import {
+  createTask,
+  createTaskLabel,
+  fetchTaskAssignees,
+  fetchTaskLabels,
+  fetchTasks,
+  updateTask,
+  uploadTaskImage,
+} from "./api";
+
+const statusLabels: Record<TaskStatus, string> = {
+  todo: "待处理",
+  in_progress: "进行中",
+  blocked: "阻塞",
+  done: "完成",
+  canceled: "取消",
+};
+
+const statuses: Array<TaskStatus | "all"> = ["all", "todo", "in_progress", "blocked", "done", "canceled"];
+const labelColors = ["#2f75d6", "#1f8a5b", "#b83245", "#8f5bd6", "#d68b2f"];
+
+export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [labels, setLabels] = useState<TaskLabel[]>([]);
+  const [assignees, setAssignees] = useState<CurrentUser[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<TaskStatus | "all">("all");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [label, setLabel] = useState("");
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+
+  const isAdmin = currentUser?.role === "admin";
+
+  async function loadTasks() {
+    const data = await fetchTasks({ query, status, assigneeId, label });
+    setTasks(data.items);
+    setSelectedTask((current) => (current ? data.items.find((item) => item.id === current.id) ?? null : current));
+  }
+
+  async function loadMeta() {
+    const [labelData, assigneeData] = await Promise.all([fetchTaskLabels(), fetchTaskAssignees()]);
+    setLabels(labelData.items);
+    setAssignees(assigneeData.items);
+  }
+
+  useEffect(() => {
+    loadMeta().catch((error: Error) => setNotice(error.message));
+  }, []);
+
+  useEffect(() => {
+    loadTasks().catch((error: Error) => setNotice(error.message));
+  }, [assigneeId, label, query, status]);
+
+  const counts = useMemo(() => {
+    return tasks.reduce<Record<string, number>>((result, task) => {
+      result[task.status] = (result[task.status] ?? 0) + 1;
+      return result;
+    }, {});
+  }, [tasks]);
+
+  async function handleSave(payload: TaskPayload) {
+    setIsBusy(true);
+    try {
+      if (editingTask) {
+        await updateTask(
+          editingTask.id,
+          isAdmin
+            ? payload
+            : {
+                description_markdown: payload.description_markdown,
+                status: payload.status,
+              },
+        );
+        setNotice("任务已更新。");
+      } else {
+        await createTask(payload);
+        setNotice("任务已创建。");
+      }
+      setIsEditorOpen(false);
+      setEditingTask(null);
+      await loadTasks();
+      await loadMeta();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "任务保存失败。");
+      throw error;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleQuickStatus(task: TaskItem, nextStatus: TaskStatus) {
+    setIsBusy(true);
+    try {
+      await updateTask(task.id, { status: nextStatus });
+      await loadTasks();
+      setNotice("状态已更新。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "状态更新失败。");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  if (!currentUser) {
+    return <div className="task-empty">请先登录后查看任务管理。</div>;
+  }
+
+  return (
+    <section className="task-page">
+      {notice ? <div className="task-notice">{notice}</div> : null}
+      <div className="task-toolbar">
+        <div>
+          <p className="eyebrow">任务管理</p>
+          <h2>开发任务</h2>
+        </div>
+        {isAdmin ? (
+          <button className="primary-button" type="button" onClick={() => setIsEditorOpen(true)}>
+            新建任务
+          </button>
+        ) : null}
+      </div>
+
+      <div className="task-filters">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务" />
+        <select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus | "all")}>
+          {statuses.map((item) => (
+            <option key={item} value={item}>
+              {item === "all" ? "全部状态" : statusLabels[item]} {item !== "all" && counts[item] ? `(${counts[item]})` : ""}
+            </option>
+          ))}
+        </select>
+        <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
+          <option value="">全部负责人</option>
+          {assignees.map((user) => (
+            <option key={user.id} value={user.id}>{user.name}</option>
+          ))}
+        </select>
+        <select value={label} onChange={(event) => setLabel(event.target.value)}>
+          <option value="">全部标签</option>
+          {labels.map((item) => (
+            <option key={item.id} value={item.slug}>{item.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="task-layout">
+        <div className="task-list">
+          {tasks.map((task) => (
+            <button key={task.id} className="task-row" type="button" onClick={() => setSelectedTask(task)}>
+              <span className={`task-status status-${task.status}`}>{statusLabels[task.status]}</span>
+              <strong>TASK-{task.number}: {task.title}</strong>
+              <span>{task.assignee?.name ?? "未分配"}</span>
+              <span className="task-labels">{task.labels.map((item) => <small key={item.id} style={{ borderColor: item.color }}>{item.name}</small>)}</span>
+            </button>
+          ))}
+          {!tasks.length ? <div className="task-empty">暂无任务。</div> : null}
+        </div>
+
+        <TaskDetail
+          task={selectedTask}
+          currentUser={currentUser}
+          isBusy={isBusy}
+          onEdit={(task) => {
+            setEditingTask(task);
+            setIsEditorOpen(true);
+          }}
+          onStatusChange={handleQuickStatus}
+        />
+      </div>
+
+      {isEditorOpen ? (
+        <TaskEditor
+          task={editingTask}
+          labels={labels}
+          assignees={assignees}
+          isBusy={isBusy}
+          onClose={() => {
+            setEditingTask(null);
+            setIsEditorOpen(false);
+          }}
+          onCreateLabel={async (name) => {
+            const color = labelColors[Math.floor(Math.random() * labelColors.length)];
+            const data = await createTaskLabel({ name, color });
+            setLabels(data.items);
+          }}
+          canEditAdminFields={isAdmin}
+          onSave={handleSave}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function TaskDetail({
+  task,
+  currentUser,
+  isBusy,
+  onEdit,
+  onStatusChange,
+}: {
+  task: TaskItem | null;
+  currentUser: CurrentUser;
+  isBusy: boolean;
+  onEdit: (task: TaskItem) => void;
+  onStatusChange: (task: TaskItem, status: TaskStatus) => Promise<void>;
+}) {
+  if (!task) {
+    return <aside className="task-detail task-empty">选择一个任务查看详情。</aside>;
+  }
+  const canEdit = currentUser.role === "admin" || task.assignee?.id === currentUser.id;
+  return (
+    <aside className="task-detail">
+      <div className="task-detail-header">
+        <span className={`task-status status-${task.status}`}>{statusLabels[task.status]}</span>
+        {canEdit ? <button className="secondary-button" type="button" onClick={() => onEdit(task)}>编辑</button> : null}
+      </div>
+      <h3>TASK-{task.number}: {task.title}</h3>
+      <dl className="task-meta">
+        <div><dt>负责人</dt><dd>{task.assignee?.name ?? "未分配"}</dd></div>
+        <div><dt>创建人</dt><dd>{task.created_by.name}</dd></div>
+      </dl>
+      <div className="task-labels detail-labels">
+        {task.labels.map((item) => <small key={item.id} style={{ borderColor: item.color }}>{item.name}</small>)}
+      </div>
+      {canEdit ? (
+        <select value={task.status} onChange={(event) => onStatusChange(task, event.target.value as TaskStatus)} disabled={isBusy}>
+          {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => (
+            <option key={item} value={item}>{statusLabels[item]}</option>
+          ))}
+        </select>
+      ) : null}
+      <MarkdownPreview markdown={task.description_markdown} />
+    </aside>
+  );
+}
+
+function TaskEditor({
+  task,
+  labels,
+  assignees,
+  isBusy,
+  onClose,
+  onCreateLabel,
+  canEditAdminFields,
+  onSave,
+}: {
+  task: TaskItem | null;
+  labels: TaskLabel[];
+  assignees: CurrentUser[];
+  isBusy: boolean;
+  onClose: () => void;
+  onCreateLabel: (name: string) => Promise<void>;
+  canEditAdminFields: boolean;
+  onSave: (payload: TaskPayload) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [description, setDescription] = useState(task?.description_markdown ?? "");
+  const [status, setStatus] = useState<TaskStatus>(task?.status ?? "todo");
+  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? "");
+  const [selectedLabels, setSelectedLabels] = useState(task?.labels.map((item) => item.name) ?? []);
+  const [newLabel, setNewLabel] = useState("");
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await onSave({
+        title: title.trim(),
+        description_markdown: description,
+        status,
+        assignee_user_id: assigneeId || null,
+        labels: selectedLabels,
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "保存失败。");
+    }
+  }
+
+  async function handleImage(file: File) {
+    const data = await uploadTaskImage(file);
+    setDescription((current) => `${current}${current ? "\n\n" : ""}![${file.name}](${data.url})`);
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="modal-panel task-editor" onSubmit={handleSubmit}>
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">{task ? "编辑任务" : "新建任务"}</p>
+            <h2>{task ? task.title : "开发任务"}</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">x</button>
+        </div>
+        <label>
+          <span>标题</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            minLength={3}
+            maxLength={160}
+            required
+            disabled={!canEditAdminFields}
+          />
+        </label>
+        <div className="task-editor-grid">
+          <label>
+            <span>负责人</span>
+            <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} disabled={!canEditAdminFields}>
+              <option value="">未分配</option>
+              {assignees.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>状态</span>
+            <select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)}>
+              {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => <option key={item} value={item}>{statusLabels[item]}</option>)}
+            </select>
+          </label>
+        </div>
+        <label>
+          <span>标签</span>
+          <div className="label-picker">
+            {labels.map((item) => (
+              <label key={item.id} className="label-choice">
+                <input
+                  type="checkbox"
+                  checked={selectedLabels.includes(item.name)}
+                  disabled={!canEditAdminFields}
+                  onChange={(event) => {
+                    setSelectedLabels((current) =>
+                      event.target.checked ? [...current, item.name] : current.filter((name) => name !== item.name),
+                    );
+                  }}
+                />
+                {item.name}
+              </label>
+            ))}
+          </div>
+          {canEditAdminFields ? <div className="new-label-row">
+            <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="新标签" />
+            <button className="secondary-button" type="button" onClick={() => {
+              const name = newLabel.trim();
+              if (!name) return;
+              onCreateLabel(name).then(() => {
+                setSelectedLabels((current) => [...new Set([...current, name])]);
+                setNewLabel("");
+              });
+            }}>添加标签</button>
+          </div> : null}
+        </label>
+        <MarkdownEditor value={description} onChange={setDescription} onImage={handleImage} />
+        {error ? <div className="form-error">{error}</div> : null}
+        <div className="modal-actions">
+          <button className="secondary-button" type="button" onClick={onClose}>取消</button>
+          <button className="primary-button" type="submit" disabled={isBusy}>{isBusy ? "保存中..." : "保存任务"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function MarkdownEditor({
+  value,
+  onChange,
+  onImage,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onImage: (file: File) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [uploadError, setUploadError] = useState("");
+
+  function wrap(prefix: string, suffix = prefix) {
+    onChange(`${value}${value ? "\n" : ""}${prefix}文本${suffix}`);
+  }
+
+  return (
+    <section className="markdown-editor">
+      <div className="markdown-toolbar">
+        <button type="button" onClick={() => setMode("edit")} className={mode === "edit" ? "active" : ""}>编辑</button>
+        <button type="button" onClick={() => setMode("preview")} className={mode === "preview" ? "active" : ""}>预览</button>
+        <button type="button" onClick={() => wrap("**")}>B</button>
+        <button type="button" onClick={() => wrap("- ", "")}>列表</button>
+        <button type="button" onClick={() => wrap("[链接](", ")")}>链接</button>
+        <label className="upload-button">
+          图片
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              setUploadError("");
+              onImage(file).catch((error: Error) => setUploadError(error.message));
+              event.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      {mode === "edit" ? (
+        <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={10} placeholder="输入 Markdown 描述，支持图片。" />
+      ) : (
+        <MarkdownPreview markdown={value} />
+      )}
+      {uploadError ? <small className="field-error">{uploadError}</small> : null}
+    </section>
+  );
+}
+
+function MarkdownPreview({ markdown }: { markdown: string }) {
+  const html = renderMarkdown(markdown);
+  return <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function renderMarkdown(markdown: string) {
+  return markdown
+    .split(/\n{2,}/)
+    .map((block) => {
+      const escaped = escapeHtml(block.trim());
+      if (!escaped) return "";
+      if (escaped.startsWith("- ")) {
+        const items = escaped.split("\n").map((line) => `<li>${line.replace(/^- /, "")}</li>`).join("");
+        return `<ul>${items}</ul>`;
+      }
+      const withImages = escaped.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, '<img src="$2" alt="$1" />');
+      const withLinks = withImages.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+      const withBold = withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      return `<p>${withBold.replace(/\n/g, "<br />")}</p>`;
+    })
+    .join("");
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}

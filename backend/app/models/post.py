@@ -150,15 +150,63 @@ class PostResponseModel(Base):
     user: Mapped[UserModel] = relationship()
 
 
+class TaskLabelLinkModel(Base):
+    __tablename__ = "task_label_links"
+    __table_args__ = (UniqueConstraint("task_id", "label_id", name="uq_task_label_links_task_label"),)
+
+    task_id: Mapped[str] = mapped_column(String(32), ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    label_id: Mapped[str] = mapped_column(String(32), ForeignKey("task_labels.id", ondelete="CASCADE"), primary_key=True)
+
+
+class TaskLabelModel(Base):
+    __tablename__ = "task_labels"
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_task_labels_tenant_slug"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    color: Mapped[str] = mapped_column(String(24), nullable=False, default="#2f75d6")
+
+    tenant: Mapped[TenantModel] = relationship()
+    tasks: Mapped[list["TaskModel"]] = relationship(secondary="task_label_links", back_populates="labels")
+
+
+class TaskModel(Base):
+    __tablename__ = "tasks"
+    __table_args__ = (UniqueConstraint("tenant_id", "number", name="uq_tasks_tenant_number"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    description_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="todo")
+    assignee_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    created_by_user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    updated_by_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship()
+    assignee: Mapped[UserModel | None] = relationship(foreign_keys=[assignee_user_id])
+    created_by: Mapped[UserModel] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[UserModel | None] = relationship(foreign_keys=[updated_by_user_id])
+    labels: Mapped[list[TaskLabelModel]] = relationship(secondary="task_label_links", back_populates="tasks")
+
+
 class NotificationTaskModel(Base):
     __tablename__ = "notification_tasks"
     __table_args__ = (
         UniqueConstraint("post_id", "event_type", "dedupe_key", name="uq_notification_tasks_dedupe"),
+        UniqueConstraint("task_id", "event_type", "dedupe_key", name="uq_notification_tasks_task_dedupe"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
-    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True)
     user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
     recipient_open_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -174,5 +222,6 @@ class NotificationTaskModel(Base):
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
     tenant: Mapped[TenantModel] = relationship()
-    post: Mapped[PostModel] = relationship()
+    post: Mapped[PostModel | None] = relationship()
+    task: Mapped[TaskModel | None] = relationship()
     user: Mapped[UserModel] = relationship()

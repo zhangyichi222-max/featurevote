@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ApiError, startFeishuBrowserLogin } from "./api/client";
+import { TaskPage } from "./features/tasks/TaskPage";
 import {
   archiveRequirement,
   createComment,
@@ -19,6 +20,7 @@ import type { CommentItem, CurrentUser, Requirement, RequirementStatus, SimilarR
 
 type SortMode = "popular" | "newest" | "recent";
 type StatusFilter = "all" | RequirementStatus;
+type AppView = "requirements" | "tasks";
 
 const statusMeta: Record<
   RequirementStatus,
@@ -89,6 +91,10 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [activeView, setActiveView] = useState<AppView>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("view") === "tasks" ? "tasks" : "requirements";
+  });
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -288,6 +294,23 @@ export default function App() {
     }
   }
 
+  if (activeView === "tasks") {
+    return (
+      <main className="app-shell">
+        <Header
+          currentUser={currentUser}
+          isAuthLoading={isAuthLoading}
+          isBusy={isBusy}
+          onLogin={startFeishuBrowserLogin}
+          onLogout={handleLogout}
+        />
+        <ViewSwitcher activeView={activeView} onChange={setActiveView} />
+        {notice ? <div className="app-toast" role="status">{notice}</div> : null}
+        <TaskPage currentUser={currentUser} />
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <Header
@@ -297,6 +320,8 @@ export default function App() {
         onLogin={startFeishuBrowserLogin}
         onLogout={handleLogout}
       />
+
+      <ViewSwitcher activeView={activeView} onChange={setActiveView} />
 
       {notice ? <div className="app-toast" role="status">{notice}</div> : null}
 
@@ -382,6 +407,29 @@ export default function App() {
         />
       ) : null}
     </main>
+  );
+}
+
+function ViewSwitcher({
+  activeView,
+  onChange,
+}: {
+  activeView: AppView;
+  onChange: (view: AppView) => void;
+}) {
+  return (
+    <nav className="view-switcher" aria-label="功能切换">
+      <button
+        className={activeView === "requirements" ? "active" : ""}
+        type="button"
+        onClick={() => onChange("requirements")}
+      >
+        需求投票
+      </button>
+      <button className={activeView === "tasks" ? "active" : ""} type="button" onClick={() => onChange("tasks")}>
+        任务管理
+      </button>
+    </nav>
   );
 }
 
