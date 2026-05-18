@@ -8,26 +8,48 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _load_server_env_from_bashrc() -> None:
-    bashrc_path = Path.home() / ".bashrc"
-    if not bashrc_path.is_file():
-        return
+_SUPPORTED_SERVER_ENV_PREFIXES = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_")
 
-    supported_prefixes = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_")
-    for raw_line in bashrc_path.read_text(encoding="utf-8").splitlines():
+
+def _iter_env_assignments(path: Path, *, require_export: bool) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line.startswith("export ") or "=" not in line:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        elif require_export:
+            continue
+        if "=" not in line:
             continue
 
-        key, value = line[len("export ") :].split("=", 1)
+        key, value = line.split("=", 1)
         key = key.strip()
-        if not key.startswith(supported_prefixes):
+        if not key.startswith(_SUPPORTED_SERVER_ENV_PREFIXES):
             continue
-        value = value.strip().strip("\"'")
+        values[key] = value.strip().strip("\"'")
+    return values
+
+
+def _load_server_env_from_files() -> None:
+    dotenv_values = _iter_env_assignments(Path(".env"), require_export=False)
+    bashrc_path = Path.home() / ".bashrc"
+    bashrc_values = _iter_env_assignments(bashrc_path, require_export=True)
+
+    for key, value in dotenv_values.items():
+        os.environ[key] = value
+
+    for key, value in bashrc_values.items():
+        if key in dotenv_values:
+            continue
         os.environ[key] = value
 
 
-_load_server_env_from_bashrc()
+_load_server_env_from_files()
 
 
 def _parse_str_list(value: str | list[str]) -> list[str]:
@@ -107,7 +129,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    _load_server_env_from_bashrc()
+    _load_server_env_from_files()
     return Settings()
 
 

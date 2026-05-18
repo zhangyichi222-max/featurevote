@@ -3,7 +3,18 @@ import os
 from app.core import config
 
 
-def test_bashrc_env_overrides_existing_environment(monkeypatch, tmp_path) -> None:
+def test_dotenv_values_take_priority_over_bashrc(monkeypatch, tmp_path) -> None:
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "\n".join(
+            [
+                "MINIO_ENDPOINT=dotenv-minio:9000",
+                "MINIO_ACCESS_KEY='dotenv-access'",
+                'MINIO_PUBLIC_BASE_URL="http://dotenv.example/featurevote"',
+            ]
+        ),
+        encoding="utf-8",
+    )
     bashrc = tmp_path / ".bashrc"
     bashrc.write_text(
         "\n".join(
@@ -15,6 +26,7 @@ def test_bashrc_env_overrides_existing_environment(monkeypatch, tmp_path) -> Non
         ),
         encoding="utf-8",
     )
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Path, "home", lambda: tmp_path)
     monkeypatch.setenv("MINIO_ENDPOINT", "process-minio:9000")
     monkeypatch.setenv("MINIO_ACCESS_KEY", "process-access")
@@ -23,10 +35,10 @@ def test_bashrc_env_overrides_existing_environment(monkeypatch, tmp_path) -> Non
     config.get_settings.cache_clear()
     settings = config.get_settings()
 
-    assert os.environ["MINIO_ENDPOINT"] == "bashrc-minio:9000"
-    assert settings.minio_endpoint == "bashrc-minio:9000"
-    assert settings.minio_access_key == "bashrc-access"
-    assert settings.minio_public_base_url == "http://minio.example/featurevote"
+    assert os.environ["MINIO_ENDPOINT"] == "dotenv-minio:9000"
+    assert settings.minio_endpoint == "dotenv-minio:9000"
+    assert settings.minio_access_key == "dotenv-access"
+    assert settings.minio_public_base_url == "http://dotenv.example/featurevote"
 
 
 def test_bashrc_minio_values_match_server_export_format(monkeypatch, tmp_path) -> None:
