@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"
     auth_token_secret: str = "dev-featurevote-change-me"
-    auth_token_ttl_seconds: int = 3600
+    auth_token_ttl_seconds: int = 7 * 24 * 60 * 60
     ollama_enabled: bool = False
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:14b"

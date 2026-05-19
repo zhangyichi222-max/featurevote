@@ -4,6 +4,7 @@ const DEFAULT_API_BASE_URL =
     : `${window.location.protocol}//${window.location.hostname}:8090/api/v1`;
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+export const AUTH_EXPIRED_EVENT = "featurevote:auth-expired";
 
 type ApiValidationError = {
   loc?: Array<string | number>;
@@ -33,6 +34,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { path } }));
+    }
+
     const error = await response.text();
     let detail = "";
     let fieldErrors: Record<string, string> = {};

@@ -87,6 +87,12 @@ export async function fetchRequirements() {
       has_voted: Boolean(item.has_voted),
       creator_name: item.user.name,
       creator_open_id: item.user.id,
+      tags: item.tags.map((tag) => ({
+        id: tag.slug,
+        name: tag.name,
+        slug: tag.slug,
+        color: tag.color,
+      })),
       linked_task: item.linked_task ?? null,
       created_at: item.created_at,
       updated_at: item.updated_at,
@@ -97,11 +103,12 @@ export async function fetchRequirements() {
 export async function createRequirement(payload: {
   title: string;
   description: string;
+  tags?: string[];
 }) {
   return apiClient.post<{ id: string }>("/posts", {
     title: payload.title,
     description: payload.description,
-    tags: [],
+    tags: payload.tags ?? [],
   });
 }
 
@@ -183,6 +190,10 @@ export async function createComment(
 
 export async function fetchTags() {
   return apiClient.get<{ items: Array<{ id: string; name: string; slug: string; color: string }> }>("/tags");
+}
+
+export async function createTag(payload: { name: string; color: string }) {
+  return apiClient.post<{ success: boolean; message: string }>("/tags", payload);
 }
 
 export async function markDuplicate(requirementId: string, originalPostId: string) {

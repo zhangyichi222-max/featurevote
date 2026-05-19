@@ -1,24 +1,26 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { ApiError, startFeishuBrowserLogin } from "./api/client";
+import { AUTH_EXPIRED_EVENT, ApiError, startFeishuBrowserLogin } from "./api/client";
 import { TaskPage } from "./features/tasks/TaskPage";
 import {
   archiveRequirement,
   convertRequirementToTask,
   createComment,
   createRequirement,
+  createTag,
   draftRequirementWithAi,
   exchangeFeishuClientCode,
   fetchComments,
   fetchCurrentUser,
   fetchRequirements,
+  fetchTags,
   findSimilarRequirements,
   logoutCurrentUser,
   updateRequirementStatus,
   voteRequirement,
 } from "./features/requirements/api";
 import { fetchTaskAssignees } from "./features/tasks/api";
-import type { CommentItem, CurrentUser, Requirement, RequirementStatus, SimilarRequirement } from "./types/requirement";
+import type { CommentItem, CurrentUser, Requirement, RequirementStatus, RequirementTag, SimilarRequirement } from "./types/requirement";
 
 type SortMode = "popular" | "newest" | "recent";
 type StatusFilter = "all" | RequirementStatus;
@@ -69,6 +71,7 @@ const filterOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "done", label: "已完成" },
   { value: "rejected", label: "暂不采纳" },
 ];
+const tagColors = ["#2f75d6", "#1f8a5b", "#b83245", "#8f5bd6", "#d68b2f"];
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
@@ -88,6 +91,7 @@ export default function App() {
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, CommentItem[]>>({});
+  const [tags, setTags] = useState<RequirementTag[]>([]);
   const [notice, setNotice] = useState("正在加载建议...");
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
@@ -114,7 +118,7 @@ export default function App() {
         if (!keyword) {
           return true;
         }
-        return normalize(`${item.title} ${item.description} ${item.req_id}`).includes(keyword);
+        return normalize(`${item.title} ${item.description} ${item.req_id} ${item.tags.map((tag) => tag.name).join(" ")}`).includes(keyword);
       })
       .sort((left, right) => {
         if (sortMode === "popular") {
@@ -144,11 +148,19 @@ export default function App() {
     setNotice("");
   }
 
-  async function loadCurrentUser() {
+  async function loadTags() {
+    const data = await fetchTags();
+    setTags(data.items);
+  }
+
+  async function loadCurrentUser(showExpiredNotice = false) {
     try {
       setCurrentUser(await fetchCurrentUser());
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
+        if (showExpiredNotice) {
+          setNotice("登录已过期，请重新登录。");
+        }
         setCurrentUser(null);
         return;
       }
@@ -160,8 +172,34 @@ export default function App() {
 
   useEffect(() => {
     loadRequirements().catch((error: Error) => setNotice(error.message));
+    loadTags().catch((error: Error) => setNotice(error.message));
     loadCurrentUser();
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const handleAuthExpired = () => {
+      setCurrentUser(null);
+      setNotice("登录已过期，请重新登录。");
+    };
+
+    const handleFocus = () => {
+      loadCurrentUser(true);
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    window.addEventListener("focus", handleFocus);
+    const intervalId = window.setInterval(() => loadCurrentUser(true), 5 * 60 * 1000);
+
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+      window.removeEventListener("focus", handleFocus);
+      window.clearInterval(intervalId);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -212,7 +250,7 @@ export default function App() {
     }
   }
 
-  async function handleCreate(payload: { title: string; description: string }) {
+  async function handleCreate(payload: { title: string; description: string; tags: string[] }) {
     if (!requireLogin("提交建议")) {
       throw new Error("需要先登录。");
     }
@@ -228,6 +266,14 @@ export default function App() {
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function handleCreateTag(name: string) {
+    const color = tagColors[Math.floor(Math.random() * tagColors.length)];
+    await createTag({ name, color });
+    const data = await fetchTags();
+    setTags(data.items);
+    return data.items;
   }
 
   async function handleVote(requirementId: string) {
@@ -423,11 +469,13 @@ export default function App() {
       {isComposerOpen ? (
         <SuggestionComposer
           isBusy={isBusy}
+          tags={tags}
           onClose={() => setIsComposerOpen(false)}
           onOpenExisting={(id) => {
             setIsComposerOpen(false);
             setSelectedId(id);
           }}
+          onCreateTag={handleCreateTag}
           onSubmit={handleCreate}
         />
       ) : null}
@@ -626,6 +674,16 @@ function SuggestionListItem({
           <StatusLozenge status={item.status} />
         </div>
         <p>{item.description}</p>
+        {item.tags.length ? (
+          <span className="suggestion-tags">
+            {item.tags.map((tag) => (
+              <small key={tag.slug} style={{ borderColor: tag.color }}>
+                <span className="label-dot" style={{ backgroundColor: tag.color }} />
+                {tag.name}
+              </small>
+            ))}
+          </span>
+        ) : null}
         {item.linked_task ? (
           <span className="linked-task-chip">TASK-{item.linked_task.number}</span>
         ) : null}
@@ -636,14 +694,18 @@ function SuggestionListItem({
 
 function SuggestionComposer({
   isBusy,
+  tags,
   onClose,
   onOpenExisting,
+  onCreateTag,
   onSubmit,
 }: {
   isBusy: boolean;
+  tags: RequirementTag[];
   onClose: () => void;
   onOpenExisting: (id: string) => void;
-  onSubmit: (payload: { title: string; description: string }) => Promise<void>;
+  onCreateTag: (name: string) => Promise<RequirementTag[]>;
+  onSubmit: (payload: { title: string; description: string; tags: string[] }) => Promise<void>;
 }) {
   const copy = {
     ideaTooShort: "\u8bf7\u81f3\u5c11\u8f93\u5165 20 \u4e2a\u5b57\uff0c\u8ba9 AI \u80fd\u7406\u89e3\u4f60\u7684\u60f3\u6cd5\u3002",
@@ -675,6 +737,10 @@ function SuggestionComposer({
     titleHint: "\u81f3\u5c11 3 \u4e2a\u5b57\uff0c\u8ba9\u522b\u4eba\u80fd\u5feb\u901f\u7406\u89e3\u8fd9\u4e2a\u60f3\u6cd5\u3002",
     description: "\u63cf\u8ff0",
     descriptionHint: "\u8865\u5145\u573a\u666f\u3001\u95ee\u9898\u548c\u671f\u671b\u7ed3\u679c\uff0c\u65b9\u4fbf\u56e2\u961f\u5224\u65ad\u9700\u6c42\u3002",
+    tags: "\u6807\u7b7e",
+    newTag: "\u65b0\u589e\u6807\u7b7e",
+    tagPlaceholder: "\u8f93\u5165\u65b0\u6807\u7b7e",
+    tagCreateFailed: "\u6807\u7b7e\u521b\u5efa\u5931\u8d25\u3002",
     back: "\u8fd4\u56de",
     submitting: "\u63d0\u4ea4\u4e2d...",
     confirmSimilar: "\u786e\u8ba4\u7c7b\u4f3c\u9700\u6c42",
@@ -687,6 +753,9 @@ function SuggestionComposer({
   const [step, setStep] = useState<ComposerStep>("idea");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
+  const [tagError, setTagError] = useState("");
   const [roughIdea, setRoughIdea] = useState("");
   const [similarItems, setSimilarItems] = useState<SimilarRequirement[]>([]);
   const [isCheckingSimilar, setIsCheckingSimilar] = useState(false);
@@ -818,6 +887,7 @@ function SuggestionComposer({
       await onSubmit({
         title: trimmedTitle,
         description: trimmedDescription,
+        tags: selectedTags,
       });
     } catch (error) {
       if (error instanceof ApiError) {
@@ -958,6 +1028,53 @@ function SuggestionComposer({
             {fieldErrors.description ?? copy.descriptionHint}
           </small>
         </label>
+        <label>
+          <span>{copy.tags}</span>
+          <div className="label-picker">
+            {tags.map((tag) => (
+              <label key={tag.slug} className="label-choice">
+                <input
+                  type="checkbox"
+                  checked={selectedTags.includes(tag.name)}
+                  onChange={(event) => {
+                    setSelectedTags((current) =>
+                      event.target.checked ? [...current, tag.name] : current.filter((name) => name !== tag.name),
+                    );
+                  }}
+                />
+                <span className="label-dot" style={{ backgroundColor: tag.color }} />
+                {tag.name}
+              </label>
+            ))}
+          </div>
+          <div className="new-label-row">
+            <input
+              value={newTag}
+              onChange={(event) => {
+                setNewTag(event.target.value);
+                setTagError("");
+              }}
+              placeholder={copy.tagPlaceholder}
+            />
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                const name = newTag.trim();
+                if (!name) return;
+                onCreateTag(name)
+                  .then(() => {
+                    setSelectedTags((current) => [...new Set([...current, name])]);
+                    setNewTag("");
+                  })
+                  .catch((error: Error) => setTagError(error.message || copy.tagCreateFailed));
+              }}
+            >
+              {copy.newTag}
+            </button>
+          </div>
+          {tagError ? <small className="field-error">{tagError}</small> : null}
+        </label>
         <div className="similar-check-actions">
           <button className="secondary-button" type="button" onClick={handleSimilarityCheck} disabled={isCheckingSimilar || isBusy}>
             {isCheckingSimilar ? copy.checkingSimilar : similarItems.length ? copy.checkAgain : copy.checkSimilar}
@@ -1082,6 +1199,16 @@ function SuggestionDetail({
               </button>
             ) : null}
             <p className="detail-description">{item.description}</p>
+            {item.tags.length ? (
+              <div className="suggestion-tags detail-tags" aria-label="标签">
+                {item.tags.map((tag) => (
+                  <small key={tag.slug} style={{ borderColor: tag.color }}>
+                    <span className="label-dot" style={{ backgroundColor: tag.color }} />
+                    {tag.name}
+                  </small>
+                ))}
+              </div>
+            ) : null}
 
             <section className="response-box">
               <h3>状态回复</h3>

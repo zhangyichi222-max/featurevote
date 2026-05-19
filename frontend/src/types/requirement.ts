@@ -7,6 +7,13 @@ export interface CurrentUser {
   role: UserRole;
 }
 
+export interface RequirementTag {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+}
+
 export interface Requirement {
   id: string;
   req_id: string;
@@ -17,6 +24,7 @@ export interface Requirement {
   has_voted: boolean;
   creator_name: string;
   creator_open_id: string;
+  tags: RequirementTag[];
   linked_task?: {
     id: string;
     number: number;
