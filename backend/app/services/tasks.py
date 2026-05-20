@@ -91,6 +91,11 @@ class TasksService:
         self.repository.create_label(payload)
         return TaskLabelListResponse(items=self.repository.list_labels())
 
+    async def delete_label(self, label_id: str) -> ActionResult:
+        if not self.repository.delete_label(label_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Label not found.")
+        return ActionResult(message="Label deleted.")
+
     async def list_assignees(self) -> TaskAssigneeListResponse:
         return TaskAssigneeListResponse(items=self.repository.list_assignees())
 

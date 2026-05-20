@@ -102,6 +102,16 @@ async def create_task_label(
     return await service.create_label(payload)
 
 
+@labels_router.delete("/{label_id}", response_model=ActionResult, dependencies=[Depends(require_mutating_origin)])
+async def delete_task_label(
+    label_id: str,
+    service: TasksService = Depends(get_tasks_service),
+    admin: UserModel = Depends(require_admin_user),
+) -> ActionResult:
+    _ = admin
+    return await service.delete_label(label_id)
+
+
 @assets_router.post("/images", response_model=TaskAssetUploadResponse, dependencies=[Depends(require_mutating_origin)])
 async def upload_task_image(
     request: Request,

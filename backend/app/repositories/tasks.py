@@ -187,6 +187,16 @@ class TasksRepository:
         self.session.commit()
         return self._to_label_item(label)
 
+    def delete_label(self, label_id: str) -> bool:
+        label = self.session.get(TagModel, label_id)
+        if label is None or label.tenant_id != DEFAULT_TENANT_ID:
+            return False
+        label.posts.clear()
+        label.tasks.clear()
+        self.session.delete(label)
+        self.session.commit()
+        return True
+
     def list_assignees(self) -> list[UserItem]:
         users = self.session.scalars(
             select(UserModel).where(UserModel.tenant_id == DEFAULT_TENANT_ID).order_by(UserModel.name.asc())

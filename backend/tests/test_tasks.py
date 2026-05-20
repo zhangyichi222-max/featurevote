@@ -124,6 +124,22 @@ def test_task_label_creation_is_visible_from_requirement_tags() -> None:
     assert any(tag.id == label.id and tag.slug == "ops" for tag in tags)
 
 
+def test_delete_shared_label_removes_it_from_tasks_and_requirements() -> None:
+    session = make_session()
+    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    posts_repo = PostsRepository(session)
+    tasks_repo = TasksRepository(session)
+    label = tasks_repo.create_label(TaskLabelCreate(name="Cleanup", color="#abcdef"))
+    post = posts_repo.create_post(PostCreate(title="Cleanup post", description="Needs cleanup", tags=["Cleanup"]), admin)
+    task = tasks_repo.create_task(TaskCreate(title="Cleanup task", labels=["Cleanup"]), admin)
+
+    assert tasks_repo.delete_label(label.id) is True
+
+    assert all(item.id != label.id for item in tasks_repo.list_labels())
+    assert posts_repo.get_post(post.id).tags == []
+    assert tasks_repo.get_task(task.id).labels == []
+
+
 def test_shared_label_migration_merges_task_labels_by_slug() -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",

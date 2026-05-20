@@ -44,6 +44,10 @@ export async function createTaskLabel(payload: { name: string; color: string }) 
   return apiClient.post<TaskLabelListResponse>("/task-labels", payload);
 }
 
+export async function deleteTaskLabel(labelId: string) {
+  return apiClient.delete<{ success: boolean; message: string }>(`/task-labels/${labelId}`);
+}
+
 export async function fetchTaskAssignees() {
   return apiClient.get<TaskAssigneeListResponse>("/tasks/assignees");
 }

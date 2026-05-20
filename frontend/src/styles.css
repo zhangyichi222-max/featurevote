@@ -1201,6 +1201,10 @@ button:focus-visible {
   width: auto;
 }
 
+.task-editor .label-choice {
+  user-select: none;
+}
+
 .task-editor .label-choice:hover,
 .composer-panel .label-choice:hover {
   background: #eef5ff;
@@ -1219,11 +1223,35 @@ button:focus-visible {
 .composer-panel .label-choice input {
   appearance: none;
   border: 0;
+  clip-path: inset(50%);
   height: 0;
   margin: 0;
+  opacity: 0;
   padding: 0;
   position: absolute;
   width: 0;
+}
+
+.label-delete-button {
+  align-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8a99aa;
+  display: inline-flex;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  margin: -2px -4px -2px 2px;
+  padding: 0;
+  width: 18px;
+}
+
+.label-delete-button:hover {
+  background: #ffe8ec;
+  color: #aa2a3e;
 }
 
 .task-editor .label-dot,

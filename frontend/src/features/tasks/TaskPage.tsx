@@ -8,6 +8,7 @@ import {
   createTask,
   createTaskLabel,
   deleteTask,
+  deleteTaskLabel,
   fetchTaskAssignees,
   fetchTaskLabels,
   fetchTasks,
@@ -251,6 +252,16 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
             const data = await createTaskLabel({ name, color });
             setLabels(data.items);
           }}
+          onDeleteLabel={async (labelId) => {
+            const target = labels.find((item) => item.id === labelId);
+            if (!target || !window.confirm(`删除标签「${target.name}」？已使用该标签的需求和任务会同步移除它。`)) {
+              return;
+            }
+            await deleteTaskLabel(labelId);
+            const data = await fetchTaskLabels();
+            setLabels(data.items);
+            await loadTasks();
+          }}
           canEditAdminFields={isAdmin}
           onSave={handleSave}
         />
@@ -348,6 +359,7 @@ function TaskEditor({
   isBusy,
   onClose,
   onCreateLabel,
+  onDeleteLabel,
   canEditAdminFields,
   onSave,
 }: {
@@ -357,6 +369,7 @@ function TaskEditor({
   isBusy: boolean;
   onClose: () => void;
   onCreateLabel: (name: string) => Promise<void>;
+  onDeleteLabel: (labelId: string) => Promise<void>;
   canEditAdminFields: boolean;
   onSave: (payload: TaskPayload) => Promise<void>;
 }) {
@@ -429,20 +442,51 @@ function TaskEditor({
           <span>标签</span>
           <div className="label-picker">
             {labels.map((item) => (
-              <label key={item.id} className="label-choice">
+              <div
+                key={item.id}
+                className="label-choice"
+                role="checkbox"
+                aria-checked={selectedLabels.includes(item.name)}
+                tabIndex={canEditAdminFields ? 0 : -1}
+                onClick={() => {
+                  if (!canEditAdminFields) return;
+                  setSelectedLabels((current) =>
+                    current.includes(item.name) ? current.filter((name) => name !== item.name) : [...current, item.name],
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== " " && event.key !== "Enter") return;
+                  event.preventDefault();
+                  if (!canEditAdminFields) return;
+                  setSelectedLabels((current) =>
+                    current.includes(item.name) ? current.filter((name) => name !== item.name) : [...current, item.name],
+                  );
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={selectedLabels.includes(item.name)}
                   disabled={!canEditAdminFields}
-                  onChange={(event) => {
-                    setSelectedLabels((current) =>
-                      event.target.checked ? [...current, item.name] : current.filter((name) => name !== item.name),
-                    );
-                  }}
+                  readOnly
                 />
                 <span className="label-dot" style={{ backgroundColor: item.color }} />
-                {item.name}
-              </label>
+                <span>{item.name}</span>
+                {canEditAdminFields ? (
+                  <button
+                    className="label-delete-button"
+                    type="button"
+                    aria-label={`删除标签 ${item.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteLabel(item.id).then(() => {
+                        setSelectedLabels((current) => current.filter((name) => name !== item.name));
+                      });
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
           {canEditAdminFields ? <div className="new-label-row">
