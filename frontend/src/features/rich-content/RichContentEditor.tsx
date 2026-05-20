@@ -30,7 +30,7 @@ interface RichContentEditorProps {
 export function RichContentEditor({
   value,
   onChange,
-  placeholder = "Write content, paste images, or attach files.",
+  placeholder = "输入内容，可粘贴图片或上传文件。",
   disabled = false,
   minRows = 8,
   uploadFile = uploadAttachment,
@@ -93,21 +93,21 @@ export function RichContentEditor({
         },
       ]).run();
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Upload failed.");
+      setUploadError(error instanceof Error ? error.message : "上传失败。");
     }
   }
 
   function wrapMarkdown(prefix: string, suffix = prefix) {
-    onChange(`${value}${value ? "\n" : ""}${prefix}text${suffix}`);
+    onChange(`${value}${value ? "\n" : ""}${prefix}文本${suffix}`);
   }
 
   function insertLink() {
-    const href = window.prompt("URL");
+    const href = window.prompt("请输入链接地址");
     if (!href) {
       return;
     }
     if (mode === "markdown" || !editor) {
-      onChange(`${value}${value ? "\n" : ""}[link](${href})`);
+      onChange(`${value}${value ? "\n" : ""}[链接](${href})`);
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
@@ -117,7 +117,7 @@ export function RichContentEditor({
     <section className="rich-content-editor">
       <div className="rich-editor-toolbar">
         <button type="button" className={mode === "rich" ? "active" : ""} onClick={() => { setMode("rich"); syncEditor(value); }}>
-          Rich
+          富文本
         </button>
         <button type="button" className={mode === "markdown" ? "active" : ""} onClick={() => setMode("markdown")}>
           Markdown
@@ -129,16 +129,16 @@ export function RichContentEditor({
           I
         </button>
         <button type="button" onClick={() => mode === "rich" ? editor?.chain().focus().toggleBulletList().run() : wrapMarkdown("- ", "")}>
-          List
+          列表
         </button>
         <button type="button" onClick={insertLink}>
-          Link
+          链接
         </button>
         <button type="button" onClick={() => imageInputRef.current?.click()}>
-          Image
+          图片
         </button>
         <button type="button" onClick={() => fileInputRef.current?.click()}>
-          File
+          文件
         </button>
         <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
           const file = event.target.files?.[0];

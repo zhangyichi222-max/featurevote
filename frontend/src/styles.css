@@ -860,6 +860,8 @@ button:focus-visible {
 
 .search-box span,
 .composer-panel label span,
+.composer-panel .rich-field > span,
+.conversion-panel .rich-field > span,
 .status-control span {
   color: #5b687a;
   font-size: 0.86rem;
@@ -1090,7 +1092,8 @@ button:focus-visible {
   padding: 18px 22px 14px;
 }
 
-.conversion-panel label {
+.conversion-panel label,
+.conversion-panel .rich-field {
   display: grid;
   gap: 7px;
   font-weight: 700;
@@ -1277,6 +1280,7 @@ button:focus-visible {
 }
 
 .composer-panel label,
+.composer-panel .rich-field,
 .comment-form,
 .status-control {
   display: grid;

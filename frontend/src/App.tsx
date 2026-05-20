@@ -1016,7 +1016,7 @@ function SuggestionComposer({
             {fieldErrors.title ?? copy.titleHint}
           </small>
         </label>
-        <label>
+        <div className="rich-field">
           <span>{copy.description}</span>
           <RichContentEditor
             value={description}
@@ -1033,7 +1033,7 @@ function SuggestionComposer({
           <small className={fieldErrors.description ? "field-error" : "field-hint"}>
             {fieldErrors.description ?? copy.descriptionHint}
           </small>
-        </label>
+        </div>
         <label>
           <span>{copy.tags}</span>
           <div className="label-picker">
@@ -1373,10 +1373,10 @@ function RequirementTaskModal({
           <span>标签</span>
           <input value={labels} onChange={(event) => setLabels(event.target.value)} placeholder="需求转入, 前端" />
         </label>
-        <label>
+        <div className="rich-field">
           <span>描述</span>
           <RichContentEditor value={description} onChange={setDescription} minRows={9} />
-        </label>
+        </div>
         {error ? <div className="form-error">{error}</div> : null}
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>取消</button>
