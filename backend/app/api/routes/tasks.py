@@ -4,6 +4,7 @@ from app.api.deps import get_tasks_service, require_admin_user, require_current_
 from app.models.post import UserModel
 from app.schemas.post import ActionResult
 from app.schemas.task import (
+    AttachmentUploadResponse,
     TaskAssetUploadResponse,
     TaskAssigneeListResponse,
     TaskCreate,
@@ -19,6 +20,7 @@ from app.services.tasks import TasksService
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 labels_router = APIRouter(prefix="/task-labels", tags=["task-labels"])
 assets_router = APIRouter(prefix="/task-assets", tags=["task-assets"])
+attachments_router = APIRouter(prefix="/attachments", tags=["attachments"])
 
 
 @router.get("", response_model=TaskListResponse)
@@ -127,4 +129,38 @@ async def get_task_image(
         content=image.content,
         media_type=image.content_type,
         headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@attachments_router.post("", response_model=AttachmentUploadResponse, dependencies=[Depends(require_mutating_origin)])
+async def upload_attachment(
+    request: Request,
+    service: TasksService = Depends(get_tasks_service),
+    user: UserModel = Depends(require_current_user),
+) -> AttachmentUploadResponse:
+    _ = user
+    content_type = request.headers.get("content-type", "")
+    filename = request.headers.get("x-file-name", "")
+    content = await request.body()
+    response = await service.upload_attachment(content, content_type, filename)
+    response.url = str(request.url_for("get_attachment", object_name=response.object_name))
+    return response
+
+
+@attachments_router.get("/{object_name:path}", name="get_attachment")
+async def get_attachment(
+    object_name: str,
+    service: TasksService = Depends(get_tasks_service),
+    user: UserModel = Depends(require_current_user),
+) -> Response:
+    _ = user
+    attachment = await service.get_attachment(object_name)
+    disposition = "inline" if attachment.is_image else "attachment"
+    return Response(
+        content=attachment.content,
+        media_type=attachment.content_type,
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Content-Disposition": f'{disposition}; filename="{attachment.filename}"',
+        },
     )

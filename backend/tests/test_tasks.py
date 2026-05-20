@@ -1,9 +1,15 @@
-from sqlalchemy import select
+import importlib.util
+from pathlib import Path
+
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import Boolean, Column, ForeignKey, MetaData, String, Table, create_engine, select
+from sqlalchemy.pool import StaticPool
 
 from app.models.post import NotificationTaskModel, PostModel, UserModel
-from app.repositories.posts import DEFAULT_TENANT_ID
+from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository
 from app.repositories.tasks import TasksRepository
-from app.schemas.post import PostCreate
+from app.schemas.post import PostCreate, TagCreate
 from app.schemas.task import TaskCreate, TaskLabelCreate, TaskUpdate
 from app.services.tasks import TasksService
 from app.tests_support import make_session
@@ -92,7 +98,113 @@ def test_create_label_is_idempotent_by_slug() -> None:
     second = repo.create_label(TaskLabelCreate(name="QA", color="#222222"))
 
     assert first.id == second.id
-    assert len(repo.list_labels()) == 1
+    assert [label.slug for label in repo.list_labels()].count("qa") == 1
+
+
+def test_task_labels_share_requirement_tag_catalog() -> None:
+    session = make_session()
+    posts_repo = PostsRepository(session)
+    tasks_repo = TasksRepository(session)
+
+    tag = posts_repo.create_tag(TagCreate(name="Shared", color="#123456"))
+    label = tasks_repo.create_label(TaskLabelCreate(name="Shared", color="#654321"))
+
+    assert label.id == tag.id
+    assert label.color == "#123456"
+    assert [item.id for item in tasks_repo.list_labels() if item.slug == "shared"] == [tag.id]
+
+
+def test_task_label_creation_is_visible_from_requirement_tags() -> None:
+    session = make_session()
+    tasks_repo = TasksRepository(session)
+
+    label = tasks_repo.create_label(TaskLabelCreate(name="Ops", color="#abcdef"))
+    tags = PostsRepository(session).list_tags()
+
+    assert any(tag.id == label.id and tag.slug == "ops" for tag in tags)
+
+
+def test_shared_label_migration_merges_task_labels_by_slug() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    metadata = MetaData()
+    Table("tenants", metadata, Column("id", String(32), primary_key=True))
+    Table(
+        "tags",
+        metadata,
+        Column("id", String(32), primary_key=True),
+        Column("tenant_id", String(32), nullable=False),
+        Column("name", String(80), nullable=False),
+        Column("slug", String(80), nullable=False),
+        Column("color", String(24), nullable=False),
+        Column("is_public", Boolean, nullable=False),
+    )
+    Table(
+        "tasks",
+        metadata,
+        Column("id", String(32), primary_key=True),
+        Column("tenant_id", String(32), nullable=False),
+    )
+    Table(
+        "task_labels",
+        metadata,
+        Column("id", String(32), primary_key=True),
+        Column("tenant_id", String(32), nullable=False),
+        Column("name", String(80), nullable=False),
+        Column("slug", String(80), nullable=False),
+        Column("color", String(24), nullable=False),
+    )
+    Table(
+        "task_label_links",
+        metadata,
+        Column("task_id", String(32), ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True),
+        Column("label_id", String(32), ForeignKey("task_labels.id", ondelete="CASCADE"), primary_key=True),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as connection:
+        connection.execute(metadata.tables["tenants"].insert(), [{"id": DEFAULT_TENANT_ID}])
+        connection.execute(
+            metadata.tables["tags"].insert(),
+            [
+                {
+                    "id": "tag-ui",
+                    "tenant_id": DEFAULT_TENANT_ID,
+                    "name": "UI",
+                    "slug": "ui",
+                    "color": "#111111",
+                    "is_public": True,
+                }
+            ],
+        )
+        connection.execute(metadata.tables["tasks"].insert(), [{"id": "task-1", "tenant_id": DEFAULT_TENANT_ID}])
+        connection.execute(
+            metadata.tables["task_labels"].insert(),
+            [
+                {"id": "old-ui", "tenant_id": DEFAULT_TENANT_ID, "name": "UI old", "slug": "ui", "color": "#222222"},
+                {"id": "old-api", "tenant_id": DEFAULT_TENANT_ID, "name": "API", "slug": "api", "color": "#333333"},
+            ],
+        )
+        connection.execute(
+            metadata.tables["task_label_links"].insert(),
+            [{"task_id": "task-1", "label_id": "old-ui"}, {"task_id": "task-1", "label_id": "old-api"}],
+        )
+
+        migration = _load_shared_label_migration()
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+
+        inspector = __import__("sqlalchemy").inspect(connection)
+        assert "task_labels" not in inspector.get_table_names()
+        link_rows = connection.execute(select(metadata.tables["task_label_links"])).mappings().all()
+        tag_rows = connection.execute(select(metadata.tables["tags"])).mappings().all()
+
+    assert {"task_id": "task-1", "label_id": "tag-ui"} in [dict(row) for row in link_rows]
+    assert any(row["slug"] == "api" and row["color"] == "#333333" for row in tag_rows)
+    assert len(link_rows) == 2
 
 
 def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
@@ -206,3 +318,12 @@ def _run(coro):
     import asyncio
 
     return asyncio.run(coro)
+
+
+def _load_shared_label_migration():
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "202605201030_shared_task_requirement_labels.py"
+    spec = importlib.util.spec_from_file_location("shared_task_requirement_labels", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module

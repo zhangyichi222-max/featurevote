@@ -8,7 +8,7 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-_SUPPORTED_SERVER_ENV_PREFIXES = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_")
+_SUPPORTED_SERVER_ENV_PREFIXES = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_", "ATTACHMENT_")
 
 
 def _iter_env_assignments(path: Path, *, require_export: bool) -> dict[str, str]:
@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     minio_public_base_url: str = ""
     minio_secure: bool = False
     task_image_max_bytes: int = 5 * 1024 * 1024
+    attachment_max_bytes: int = 20 * 1024 * 1024
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

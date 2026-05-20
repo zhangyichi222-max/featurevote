@@ -6,6 +6,7 @@ from app import models  # noqa: F401
 from app.api.routes.ai import router as ai_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.posts import router as posts_router, tags_router
+from app.api.routes.tasks import attachments_router
 from app.api.routes.tasks import assets_router as task_assets_router
 from app.api.routes.tasks import labels_router as task_labels_router
 from app.api.routes.tasks import router as tasks_router
@@ -33,6 +34,7 @@ app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(tasks_router, prefix=settings.api_prefix)
 app.include_router(task_labels_router, prefix=settings.api_prefix)
 app.include_router(task_assets_router, prefix=settings.api_prefix)
+app.include_router(attachments_router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

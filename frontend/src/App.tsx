@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { AUTH_EXPIRED_EVENT, ApiError, startFeishuBrowserLogin } from "./api/client";
+import { RichContentEditor, RichContentPreview } from "./features/rich-content/RichContentEditor";
 import { TaskPage } from "./features/tasks/TaskPage";
 import {
   archiveRequirement,
@@ -175,6 +176,14 @@ export default function App() {
     loadTags().catch((error: Error) => setNotice(error.message));
     loadCurrentUser();
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "requirements") {
+      return;
+    }
+    loadRequirements().catch((error: Error) => setNotice(error.message));
+    loadTags().catch((error: Error) => setNotice(error.message));
+  }, [activeView]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -673,7 +682,7 @@ function SuggestionListItem({
           <h2>{item.title}</h2>
           <StatusLozenge status={item.status} />
         </div>
-        <p>{item.description}</p>
+        <RichContentPreview markdown={item.description} className="suggestion-summary" />
         {item.tags.length ? (
           <span className="suggestion-tags">
             {item.tags.map((tag) => (
@@ -1009,20 +1018,17 @@ function SuggestionComposer({
         </label>
         <label>
           <span>{copy.description}</span>
-          <textarea
+          <RichContentEditor
             value={description}
-            onChange={(event) => {
-              setDescription(event.target.value);
+            onChange={(nextValue) => {
+              setDescription(nextValue);
               setSubmitConfirmed(false);
               setSimilarItems([]);
               setSimilarAiEnhanced(false);
               setFieldErrors((current) => ({ ...current, description: undefined }));
               setSubmitError("");
             }}
-            rows={7}
-            required
-            aria-invalid={Boolean(fieldErrors.description)}
-            className={fieldErrors.description ? "input-error" : ""}
+            minRows={7}
           />
           <small className={fieldErrors.description ? "field-error" : "field-hint"}>
             {fieldErrors.description ?? copy.descriptionHint}
@@ -1198,7 +1204,7 @@ function SuggestionDetail({
                 <small>{item.linked_task.title}</small>
               </button>
             ) : null}
-            <p className="detail-description">{item.description}</p>
+            <RichContentPreview markdown={item.description} className="detail-description" />
             {item.tags.length ? (
               <div className="suggestion-tags detail-tags" aria-label="标签">
                 {item.tags.map((tag) => (
@@ -1369,7 +1375,7 @@ function RequirementTaskModal({
         </label>
         <label>
           <span>描述</span>
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={9} />
+          <RichContentEditor value={description} onChange={setDescription} minRows={9} />
         </label>
         {error ? <div className="form-error">{error}</div> : null}
         <div className="modal-actions">

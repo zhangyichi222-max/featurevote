@@ -354,7 +354,8 @@
   margin: 0 0 10px;
 }
 
-.task-description-panel .markdown-preview {
+.task-description-panel .markdown-preview,
+.task-description-panel .rich-content-preview {
   border: 0;
   min-height: 120px;
   padding: 0;
@@ -432,6 +433,83 @@
 }
 
 .markdown-preview a {
+  color: #2f75d6;
+}
+
+.rich-content-editor {
+  display: grid;
+  gap: 0;
+}
+
+.rich-editor-toolbar {
+  align-items: center;
+  border: 1px solid #d8e2ef;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+}
+
+.rich-editor-toolbar button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #35506b;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.rich-editor-toolbar button.active {
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(31, 45, 61, 0.12);
+  color: #17324d;
+}
+
+.rich-editor-toolbar input {
+  display: none;
+}
+
+.rich-editor-surface,
+.rich-markdown-textarea,
+.rich-content-preview {
+  border: 1px solid #d8e2ef;
+  border-radius: 0 0 8px 8px;
+  color: #25364d;
+  min-height: 180px;
+}
+
+.rich-editor-surface .ProseMirror {
+  min-height: 180px;
+  padding: 12px;
+}
+
+.rich-editor-surface .ProseMirror:focus {
+  outline: 3px solid rgba(33, 118, 255, 0.2);
+}
+
+.rich-markdown-textarea {
+  padding: 12px;
+  resize: vertical;
+}
+
+.rich-content-preview {
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.rich-content-preview img,
+.rich-editor-surface img {
+  border-radius: 8px;
+  display: block;
+  max-width: 100%;
+}
+
+.rich-content-preview a,
+.rich-editor-surface a {
   color: #2f75d6;
 }
 
@@ -897,6 +975,23 @@ button:focus-visible {
   color: #5d697a;
 }
 
+.suggestion-summary.rich-content-preview {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.suggestion-summary.rich-content-preview p {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  color: #5d697a;
+}
+
 .status-lozenge {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1065,6 +1160,7 @@ button:focus-visible {
 .task-editor > label,
 .task-editor > .task-editor-grid,
 .task-editor > .markdown-editor,
+.task-editor > .rich-content-editor,
 .task-editor > .form-error {
   margin: 0 22px 14px;
 }
@@ -1460,10 +1556,12 @@ button:focus-visible {
 }
 
 .detail-description {
+  border: 0;
+  min-height: 0;
+  padding: 0;
   margin: 0;
   color: #465366;
   font-size: 1.06rem;
-  white-space: pre-wrap;
 }
 
 .detail-tags {

@@ -21,7 +21,7 @@ type PostItem = {
   comments_count: number;
   has_voted?: boolean;
   user: { name: string; id: string };
-  tags: Array<{ slug: string; name: string; color: string }>;
+  tags: Array<{ id: string; slug: string; name: string; color: string }>;
   response?: { text: string } | null;
   duplicate_of?: { number: number; title: string } | null;
   linked_task?: { id: string; number: number; title: string; status: string } | null;
@@ -88,7 +88,7 @@ export async function fetchRequirements() {
       creator_name: item.user.name,
       creator_open_id: item.user.id,
       tags: item.tags.map((tag) => ({
-        id: tag.slug,
+        id: tag.id,
         name: tag.name,
         slug: tag.slug,
         color: tag.color,

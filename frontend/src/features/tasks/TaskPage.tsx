@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { API_BASE_URL, ApiError } from "../../api/client";
+import { RichContentEditor, RichContentPreview } from "../rich-content/RichContentEditor";
 import type { CurrentUser } from "../../types/requirement";
 import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
 import {
@@ -470,55 +471,16 @@ function TaskEditor({
 function MarkdownEditor({
   value,
   onChange,
-  onImage,
 }: {
   value: string;
   onChange: (value: string) => void;
   onImage: (file: File) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
-  const [uploadError, setUploadError] = useState("");
-
-  function wrap(prefix: string, suffix = prefix) {
-    onChange(`${value}${value ? "\n" : ""}${prefix}文本${suffix}`);
-  }
-
-  return (
-    <section className="markdown-editor">
-      <div className="markdown-toolbar">
-        <button type="button" onClick={() => setMode("edit")} className={mode === "edit" ? "active" : ""}>编辑</button>
-        <button type="button" onClick={() => setMode("preview")} className={mode === "preview" ? "active" : ""}>预览</button>
-        <button type="button" onClick={() => wrap("**")}>B</button>
-        <button type="button" onClick={() => wrap("- ", "")}>列表</button>
-        <button type="button" onClick={() => wrap("[链接](", ")")}>链接</button>
-        <label className="upload-button">
-          图片
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              setUploadError("");
-              onImage(file).catch((error: Error) => setUploadError(error.message));
-              event.target.value = "";
-            }}
-          />
-        </label>
-      </div>
-      {mode === "edit" ? (
-        <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={10} placeholder="输入 Markdown 描述，支持图片。" />
-      ) : (
-        <MarkdownPreview markdown={value} />
-      )}
-      {uploadError ? <small className="field-error">{uploadError}</small> : null}
-    </section>
-  );
+  return <RichContentEditor value={value} onChange={onChange} />;
 }
 
 function MarkdownPreview({ markdown }: { markdown: string }) {
-  const html = renderMarkdown(markdown);
-  return <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <RichContentPreview markdown={markdown} />;
 }
 
 function renderMarkdown(markdown: string) {

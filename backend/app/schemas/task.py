@@ -71,6 +71,14 @@ class TaskAssetUploadResponse(BaseModel):
     url: str
 
 
+class AttachmentUploadResponse(BaseModel):
+    url: str
+    object_name: str
+    filename: str
+    content_type: str
+    size: int
+    is_image: bool
+
+
 class TaskAssigneeListResponse(BaseModel):
     items: list[UserItem]
-

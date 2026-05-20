@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from app.models.post import NotificationTaskModel, PostModel, PostResponseModel, TaskLabelModel, TaskModel, UserModel, utc_now
+from app.models.post import NotificationTaskModel, PostModel, PostResponseModel, TagModel, TaskModel, UserModel, utc_now
 from app.repositories.posts import DEFAULT_TENANT_ID
 from app.schemas.post import UserItem
 from app.schemas.task import TaskCreate, TaskItem, TaskLabelCreate, TaskLabelItem, TaskUpdate
@@ -42,7 +42,7 @@ class TasksRepository:
             )
 
         if labels:
-            statement = statement.join(TaskModel.labels).where(TaskLabelModel.slug.in_(labels))
+            statement = statement.join(TaskModel.labels).where(TagModel.slug.in_(labels))
 
         records = self.session.scalars(statement.order_by(TaskModel.updated_at.desc())).unique().all()
         return [self._to_task_item(record) for record in records]
@@ -178,7 +178,7 @@ class TasksRepository:
 
     def list_labels(self) -> list[TaskLabelItem]:
         labels = self.session.scalars(
-            select(TaskLabelModel).where(TaskLabelModel.tenant_id == DEFAULT_TENANT_ID).order_by(TaskLabelModel.name.asc())
+            select(TagModel).where(TagModel.tenant_id == DEFAULT_TENANT_ID).order_by(TagModel.name.asc())
         ).all()
         return [self._to_label_item(label) for label in labels]
 
@@ -193,15 +193,15 @@ class TasksRepository:
         ).all()
         return [self._to_user_item(user) for user in users]
 
-    def ensure_label(self, name: str, color: str = "#2f75d6") -> TaskLabelModel:
+    def ensure_label(self, name: str, color: str = "#2f75d6") -> TagModel:
         name = name.strip()
         slug = _slugify(name)
         label = self.session.scalar(
-            select(TaskLabelModel).where(TaskLabelModel.tenant_id == DEFAULT_TENANT_ID, TaskLabelModel.slug == slug)
+            select(TagModel).where(TagModel.tenant_id == DEFAULT_TENANT_ID, TagModel.slug == slug)
         )
         if label is not None:
             return label
-        label = TaskLabelModel(id=uuid4().hex, tenant_id=DEFAULT_TENANT_ID, name=name, slug=slug, color=color)
+        label = TagModel(id=uuid4().hex, tenant_id=DEFAULT_TENANT_ID, name=name, slug=slug, color=color, is_public=True)
         self.session.add(label)
         self.session.flush()
         return label
@@ -355,7 +355,7 @@ class TasksRepository:
             updated_at=task.updated_at,
         )
 
-    def _to_label_item(self, label: TaskLabelModel) -> TaskLabelItem:
+    def _to_label_item(self, label: TagModel) -> TaskLabelItem:
         return TaskLabelItem(id=label.id, name=label.name, slug=label.slug, color=label.color)
 
     def _to_user_item(self, user: UserModel) -> UserItem:
@@ -366,4 +366,4 @@ def _slugify(value: str) -> str:
     slug = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
     while "--" in slug:
         slug = slug.replace("--", "-")
-    return slug.strip("-") or "label"
+    return slug.strip("-") or "item"

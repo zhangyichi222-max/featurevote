@@ -1,10 +1,18 @@
 from fastapi import HTTPException, status
 
-from app.clients.minio_storage import ALLOWED_IMAGE_TYPES, StorageConfigError, StoredImage, TaskImageStorage
+from app.clients.minio_storage import (
+    ALLOWED_IMAGE_TYPES,
+    AttachmentStorage,
+    StorageConfigError,
+    StoredAttachment,
+    StoredImage,
+    TaskImageStorage,
+)
 from app.models.post import UserModel
 from app.schemas.post import ActionResult
 from app.repositories.tasks import TasksRepository
 from app.schemas.task import (
+    AttachmentUploadResponse,
     TaskAssetUploadResponse,
     TaskAssigneeListResponse,
     TaskCreate,
@@ -19,6 +27,7 @@ from app.schemas.task import (
 class TasksService:
     def __init__(self, repository: TasksRepository, image_storage: TaskImageStorage | None = None) -> None:
         self.repository = repository
+        self.attachment_storage = image_storage or AttachmentStorage()
         self.image_storage = image_storage or TaskImageStorage()
 
     async def list_tasks(
@@ -113,3 +122,35 @@ class TasksService:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - normalize storage misses/provider failures for image tags.
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found.") from exc
+
+    async def upload_attachment(
+        self,
+        content: bytes,
+        content_type: str,
+        filename: str,
+        public_url: str | None = None,
+    ) -> AttachmentUploadResponse:
+        try:
+            upload = self.attachment_storage.upload_attachment(content, content_type, filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except StorageConfigError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        return AttachmentUploadResponse(
+            url=public_url or upload.object_name,
+            object_name=upload.object_name,
+            filename=upload.filename,
+            content_type=upload.content_type,
+            size=upload.size,
+            is_image=upload.is_image,
+        )
+
+    async def get_attachment(self, object_name: str) -> StoredAttachment:
+        try:
+            return self.attachment_storage.get_attachment(object_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except StorageConfigError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - normalize storage misses/provider failures for links.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found.") from exc

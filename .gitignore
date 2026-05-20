@@ -13,3 +13,4 @@ Thumbs.db
 *.pyc
 *.pyo
 .codex/
+openspec/

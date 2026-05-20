@@ -71,6 +71,7 @@ class TagModel(Base):
 
     tenant: Mapped[TenantModel] = relationship(back_populates="tags")
     posts: Mapped[list["PostModel"]] = relationship(secondary="post_tags", back_populates="tags")
+    tasks: Mapped[list["TaskModel"]] = relationship(secondary="task_label_links", back_populates="labels")
 
 
 class PostModel(Base):
@@ -156,21 +157,7 @@ class TaskLabelLinkModel(Base):
     __table_args__ = (UniqueConstraint("task_id", "label_id", name="uq_task_label_links_task_label"),)
 
     task_id: Mapped[str] = mapped_column(String(32), ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
-    label_id: Mapped[str] = mapped_column(String(32), ForeignKey("task_labels.id", ondelete="CASCADE"), primary_key=True)
-
-
-class TaskLabelModel(Base):
-    __tablename__ = "task_labels"
-    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_task_labels_tenant_slug"),)
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
-    name: Mapped[str] = mapped_column(String(80), nullable=False)
-    slug: Mapped[str] = mapped_column(String(80), nullable=False)
-    color: Mapped[str] = mapped_column(String(24), nullable=False, default="#2f75d6")
-
-    tenant: Mapped[TenantModel] = relationship()
-    tasks: Mapped[list["TaskModel"]] = relationship(secondary="task_label_links", back_populates="labels")
+    label_id: Mapped[str] = mapped_column(String(32), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
 
 
 class TaskModel(Base):
@@ -199,7 +186,7 @@ class TaskModel(Base):
     assignee: Mapped[UserModel | None] = relationship(foreign_keys=[assignee_user_id])
     created_by: Mapped[UserModel] = relationship(foreign_keys=[created_by_user_id])
     updated_by: Mapped[UserModel | None] = relationship(foreign_keys=[updated_by_user_id])
-    labels: Mapped[list[TaskLabelModel]] = relationship(secondary="task_label_links", back_populates="tasks")
+    labels: Mapped[list[TagModel]] = relationship(secondary="task_label_links", back_populates="tasks")
 
 
 class NotificationTaskModel(Base):
