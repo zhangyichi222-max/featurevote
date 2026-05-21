@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes.ai import router as ai_router
-from app.clients.ollama import OllamaSuggestionClient
+from app.clients.deepseek import DeepSeekSuggestionClient
 from app.core.config import settings
 from app.core.security import create_session_token
 from app.db.base import Base
@@ -63,11 +63,14 @@ def client() -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_db_session] = override_db
     previous_origins = list(settings.cors_origins)
+    previous_deepseek_enabled = settings.deepseek_enabled
     settings.cors_origins = ["http://localhost:5173"]
+    settings.deepseek_enabled = False
     try:
         yield TestClient(app)
     finally:
         settings.cors_origins = previous_origins
+        settings.deepseek_enabled = previous_deepseek_enabled
 
 
 def test_ai_draft_requires_login(client: TestClient) -> None:
@@ -102,7 +105,7 @@ def test_ai_draft_returns_generated_suggestion(
             description="问题：当前无法导出。\n\n场景：复盘会议。\n\n期望结果：可以下载表格。",
         )
 
-    monkeypatch.setattr(OllamaSuggestionClient, "draft_suggestion", draft_suggestion)
+    monkeypatch.setattr(DeepSeekSuggestionClient, "draft_suggestion", draft_suggestion)
 
     response = client.post(
         "/api/v1/ai/suggestion-draft",
@@ -115,7 +118,7 @@ def test_ai_draft_returns_generated_suggestion(
     assert response.json()["title"] == "支持导出投票结果"
 
 
-def test_similar_requirements_uses_text_similarity_without_ollama(client: TestClient) -> None:
+def test_similar_requirements_uses_text_similarity_without_deepseek(client: TestClient) -> None:
     response = client.post(
         "/api/v1/ai/similar-requirements",
         json={
@@ -133,7 +136,7 @@ def test_similar_requirements_uses_text_similarity_without_ollama(client: TestCl
     assert data["items"][0]["similarity"] > 0
 
 
-def test_similar_requirements_can_use_ollama_enhancement(
+def test_similar_requirements_can_use_deepseek_enhancement(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -154,7 +157,7 @@ def test_similar_requirements_can_use_ollama_enhancement(
             )
         ]
 
-    monkeypatch.setattr(OllamaSuggestionClient, "assess_similar_requirements", assess_similar_requirements)
+    monkeypatch.setattr(DeepSeekSuggestionClient, "assess_similar_requirements", assess_similar_requirements)
 
     response = client.post(
         "/api/v1/ai/similar-requirements",

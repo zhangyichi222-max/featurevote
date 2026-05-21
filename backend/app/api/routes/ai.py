@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_current_user, require_mutating_origin
-from app.clients.ollama import OllamaSuggestionClient
+from app.clients.deepseek import DeepSeekSuggestionClient
 from app.db.session import get_db_session
 from app.models.post import UserModel
 from app.repositories.posts import PostsRepository
@@ -28,7 +28,7 @@ async def draft_suggestion(
     user: UserModel = Depends(require_current_user),
 ) -> SuggestionDraftResponse:
     _ = user
-    return await OllamaSuggestionClient().draft_suggestion(payload.idea)
+    return await DeepSeekSuggestionClient().draft_suggestion(payload.idea)
 
 
 @router.post(

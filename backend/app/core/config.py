@@ -8,7 +8,15 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-_SUPPORTED_SERVER_ENV_PREFIXES = ("MYSQL_", "FEISHU_", "FRONTEND_", "OLLAMA_", "MINIO_", "TASK_", "ATTACHMENT_")
+_SUPPORTED_SERVER_ENV_PREFIXES = (
+    "MYSQL_",
+    "FEISHU_",
+    "FRONTEND_",
+    "DEEPSEEK_",
+    "MINIO_",
+    "TASK_",
+    "ATTACHMENT_",
+)
 
 
 def _iter_env_assignments(path: Path, *, require_export: bool) -> dict[str, str]:
@@ -87,12 +95,15 @@ class Settings(BaseSettings):
     auth_cookie_samesite: str = "lax"
     auth_token_secret: str = "dev-featurevote-change-me"
     auth_token_ttl_seconds: int = 7 * 24 * 60 * 60
-    ollama_enabled: bool = False
-    ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen2.5:14b"
-    ollama_timeout: float = 30
-    ollama_max_text_chars: int = 12000
-    ollama_min_text_chars: int = 20
+    deepseek_enabled: bool = True
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-pro"
+    deepseek_thinking: str = "enabled"
+    deepseek_reasoning_effort: str = "high"
+    deepseek_timeout: float = 30
+    deepseek_max_text_chars: int = 12000
+    deepseek_min_text_chars: int = 20
     minio_endpoint: str = ""
     minio_access_key: str = ""
     minio_secret_key: str = ""

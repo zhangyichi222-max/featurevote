@@ -3,7 +3,7 @@ from difflib import SequenceMatcher
 
 from fastapi import HTTPException
 
-from app.clients.ollama import OllamaSuggestionClient
+from app.clients.deepseek import DeepSeekSuggestionClient
 from app.models.post import PostModel
 from app.repositories.posts import PostsRepository
 from app.schemas.ai import (
@@ -44,7 +44,7 @@ class SimilarRequirementsService:
             return SimilarRequirementsResponse(items=[])
 
         try:
-            enhanced = await OllamaSuggestionClient().assess_similar_requirements(title, description, candidates)
+            enhanced = await DeepSeekSuggestionClient().assess_similar_requirements(title, description, candidates)
         except HTTPException:
             return SimilarRequirementsResponse(items=candidates, ai_enhanced=False)
 

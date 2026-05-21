@@ -10,27 +10,53 @@ from app.core.config import settings
 from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
 
 
-class OllamaSuggestionClient:
+SECTION_HEADINGS = ("Problem:", "Context:", "Expected result:")
+
+
+class DeepSeekSuggestionClient:
     async def draft_suggestion(self, idea: str) -> SuggestionDraftResponse:
-        if not settings.ollama_enabled:
+        if not settings.deepseek_enabled or not settings.deepseek_api_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="AI drafting is not enabled.",
             )
 
         cleaned_idea = idea.strip()
-        if len(cleaned_idea) < settings.ollama_min_text_chars:
+        if len(cleaned_idea) < settings.deepseek_min_text_chars:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Please enter at least {settings.ollama_min_text_chars} characters for AI drafting.",
+                detail=f"Please enter at least {settings.deepseek_min_text_chars} characters for AI drafting.",
             )
-        if len(cleaned_idea) > settings.ollama_max_text_chars:
+        if len(cleaned_idea) > settings.deepseek_max_text_chars:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Please keep the idea under {settings.ollama_max_text_chars} characters.",
+                detail=f"Please keep the idea under {settings.deepseek_max_text_chars} characters.",
             )
 
-        content = await self._chat(cleaned_idea)
+        content = await self._chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You convert rough product feedback into a concise feature request draft. "
+                        "Return strict JSON only with fields: title, description. "
+                        "The description must contain exactly three sections, in order: "
+                        "Problem:, Context:, Expected result:."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Draft a feature request from this idea.\n\n"
+                        f"Idea: {cleaned_idea}\n\n"
+                        "Example JSON: "
+                        '{"title":"Export vote results by department",'
+                        '"description":"Problem: ...\\n\\nContext: ...\\n\\nExpected result: ..."}'
+                    ),
+                },
+            ],
+            service_name="AI drafting",
+        )
         return _parse_suggestion_draft(content)
 
     async def assess_similar_requirements(
@@ -39,87 +65,9 @@ class OllamaSuggestionClient:
         description: str,
         candidates: list[SimilarRequirementItem],
     ) -> list[SimilarRequirementItem]:
-        if not settings.ollama_enabled or not candidates:
+        if not settings.deepseek_enabled or not settings.deepseek_api_key or not candidates:
             return candidates
 
-        content = await self._chat_similarity(title.strip(), description.strip(), candidates)
-        return _parse_similarity_assessment(content, candidates)
-
-    async def _chat(self, idea: str) -> str:
-        url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
-        payload = {
-            "model": settings.ollama_model,
-            "stream": False,
-            "format": "json",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一个产品反馈写作助手。请把用户的一句话想法改写为需求投票系统里的清晰需求。"
-                        "默认使用中文，内容务实、具体，不承诺实现方案，不夸大收益。"
-                        "只返回 JSON，不要 Markdown。JSON 字段必须是 title 和 description。"
-                        "description 只能包含三个段落，段落标题依次为：问题：、场景：、期望结果：。"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "请根据下面的粗略想法生成一个需求草稿。\n\n"
-                        f"粗略想法：{idea}\n\n"
-                        "返回格式示例："
-                        '{"title":"支持按部门筛选投票结果",'
-                        '"description":"问题：...\\n\\n场景：...\\n\\n期望结果：..."}'
-                    ),
-                },
-            ],
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="AI drafting service is unavailable.",
-            ) from exc
-
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI drafting service returned an unreadable response.",
-            ) from exc
-
-        if not isinstance(data, dict):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI drafting service returned an invalid response.",
-            )
-
-        message = data.get("message")
-        if not isinstance(message, dict):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI drafting service returned an invalid response.",
-            )
-
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI drafting service returned an empty response.",
-            )
-        return content
-
-    async def _chat_similarity(
-        self,
-        title: str,
-        description: str,
-        candidates: list[SimilarRequirementItem],
-    ) -> str:
-        url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
         candidate_text = "\n".join(
             (
                 f"- id: {candidate.id}\n"
@@ -129,11 +77,8 @@ class OllamaSuggestionClient:
             )
             for candidate in candidates
         )
-        payload = {
-            "model": settings.ollama_model,
-            "stream": False,
-            "format": "json",
-            "messages": [
+        content = await self._chat(
+            [
                 {
                     "role": "system",
                     "content": (
@@ -146,22 +91,42 @@ class OllamaSuggestionClient:
                 {
                     "role": "user",
                     "content": (
-                        f"New request title: {title}\n"
-                        f"New request description: {description[:2000]}\n\n"
+                        f"New request title: {title.strip()}\n"
+                        f"New request description: {description.strip()[:2000]}\n\n"
                         f"Existing candidates:\n{candidate_text}"
                     ),
                 },
             ],
+            service_name="AI similarity",
+        )
+        return _parse_similarity_assessment(content, candidates)
+
+    async def _chat(self, messages: list[dict[str, str]], *, service_name: str) -> str:
+        url = f"{settings.deepseek_base_url.rstrip('/')}/chat/completions"
+        payload: dict[str, Any] = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "stream": False,
+            "response_format": {"type": "json_object"},
         }
+        if settings.deepseek_thinking == "enabled":
+            payload["reasoning_effort"] = settings.deepseek_reasoning_effort
 
         try:
-            async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
-                response = await client.post(url, json=payload)
+            async with httpx.AsyncClient(timeout=settings.deepseek_timeout) as client:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {settings.deepseek_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="AI similarity service is unavailable.",
+                detail=f"{service_name} service is unavailable.",
             ) from exc
 
         try:
@@ -169,17 +134,41 @@ class OllamaSuggestionClient:
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI similarity service returned an unreadable response.",
+                detail=f"{service_name} service returned an unreadable response.",
             ) from exc
 
-        message = data.get("message") if isinstance(data, dict) else None
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str) or not content.strip():
+        content = _extract_chat_content(data)
+        if not content.strip():
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="AI similarity service returned an empty response.",
+                detail=f"{service_name} service returned an empty response.",
             )
         return content
+
+
+def _extract_chat_content(data: Any) -> str:
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI service returned an invalid response.",
+        )
+
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI service returned an invalid response.",
+        )
+
+    first_choice = choices[0]
+    message = first_choice.get("message") if isinstance(first_choice, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI service returned an invalid response.",
+        )
+    return content
 
 
 def _parse_suggestion_draft(content: str) -> SuggestionDraftResponse:
@@ -224,25 +213,24 @@ def _load_json_object(content: str) -> dict[str, Any]:
 
 
 def _normalize_description(description: str) -> str:
-    sections = ("问题：", "场景：", "期望结果：")
     parsed_sections = _extract_ordered_sections(description)
     if parsed_sections is not None:
-        return "\n\n".join(f"{heading}{body}" for heading, body in parsed_sections)
+        return "\n\n".join(f"{heading} {body}" for heading, body in parsed_sections)
 
-    fallback_problem = _strip_extra_headings(description) or "请补充当前遇到的问题。"
+    fallback_problem = _strip_extra_headings(description) or "Please describe the current problem."
     return "\n\n".join(
         [
-            f"问题：{fallback_problem}",
-            "场景：请补充这个需求出现的使用场景。",
-            "期望结果：请补充希望产品达到的效果。",
+            f"Problem: {fallback_problem}",
+            "Context: Add relevant users, workflow, and timing details.",
+            "Expected result: Describe the outcome that would make this request successful.",
         ]
     )
 
 
 def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
-    pattern = re.compile(r"(问题：|场景：|期望结果：)")
+    pattern = re.compile(r"(Problem:|Context:|Expected result:)")
     matches = list(pattern.finditer(description))
-    if [match.group(1) for match in matches] != ["问题：", "场景：", "期望结果："]:
+    if [match.group(1) for match in matches] != list(SECTION_HEADINGS):
         return None
 
     parsed: list[tuple[str, str]] = []
@@ -250,7 +238,7 @@ def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(description)
         body = description[start:end].strip()
-        if not body or re.search(r"(^|\n)\s*[^：:\n]{1,16}[：:]", body):
+        if not body or re.search(r"(^|\n)\s*[A-Za-z ]{1,32}:", body):
             return None
         parsed.append((match.group(1), body))
 
@@ -259,9 +247,8 @@ def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
 
 
 def _strip_extra_headings(text: str) -> str:
-    cleaned = re.sub(r"(^|\n)\s*[^：:\n]{1,16}[：:]", " ", text)
+    cleaned = re.sub(r"(^|\n)\s*[A-Za-z ]{1,32}:", " ", text)
     return re.sub(r"\s+", " ", cleaned).strip()
-
 
 
 def _parse_similarity_assessment(

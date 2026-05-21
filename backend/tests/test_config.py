@@ -66,3 +66,29 @@ def test_bashrc_minio_values_match_server_export_format(monkeypatch, tmp_path) -
     assert settings.minio_bucket == "featurevote"
     assert settings.minio_secure is False
     assert settings.minio_public_base_url == ""
+
+
+def test_bashrc_deepseek_values_match_server_export_format(monkeypatch, tmp_path) -> None:
+    bashrc = tmp_path / ".bashrc"
+    bashrc.write_text(
+        "\n".join(
+            [
+                "export DEEPSEEK_API_KEY='test-key'",
+                "export DEEPSEEK_BASE_URL='https://api.deepseek.com'",
+                "export DEEPSEEK_MODEL='deepseek-v4-pro'",
+                "export DEEPSEEK_THINKING='enabled'",
+                "export DEEPSEEK_REASONING_EFFORT='high'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config.Path, "home", lambda: tmp_path)
+
+    config.get_settings.cache_clear()
+    settings = config.get_settings()
+
+    assert settings.deepseek_api_key == "test-key"
+    assert settings.deepseek_base_url == "https://api.deepseek.com"
+    assert settings.deepseek_model == "deepseek-v4-pro"
+    assert settings.deepseek_thinking == "enabled"
+    assert settings.deepseek_reasoning_effort == "high"
