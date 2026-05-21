@@ -10,56 +10,56 @@ from app.clients.deepseek import (
 
 def test_parse_suggestion_draft_accepts_json_content() -> None:
     draft = _parse_suggestion_draft(
-        '{"title":"Export vote results by department",'
-        '"description":"Problem: Admins cannot export vote totals.\\n\\n'
-        'Context: Reports are prepared manually today.\\n\\n'
-        'Expected result: Admins can download a CSV grouped by department."}'
+        '{"title":"按部门导出投票结果",'
+        '"description":"问题：管理员无法导出投票总数。\\n\\n'
+        '场景：复盘会议需要人工整理报表。\\n\\n'
+        '期望结果：管理员可以下载按部门分组的 CSV。"}'
     )
 
-    assert draft.title == "Export vote results by department"
-    assert "Problem:" in draft.description
-    assert "Context:" in draft.description
-    assert "Expected result:" in draft.description
+    assert draft.title == "按部门导出投票结果"
+    assert "问题：" in draft.description
+    assert "场景：" in draft.description
+    assert "期望结果：" in draft.description
 
 
 def test_parse_suggestion_draft_extracts_json_from_wrapped_content() -> None:
     draft = _parse_suggestion_draft(
-        'Here is JSON: {"title":"Cleaner export flow","description":"Need easier exports."}'
+        'Here is JSON: {"title":"优化导出流程","description":"需要更方便地导出数据。"}'
     )
 
-    assert draft.title == "Cleaner export flow"
-    assert "Problem:" in draft.description
-    assert "Context:" in draft.description
-    assert "Expected result:" in draft.description
+    assert draft.title == "优化导出流程"
+    assert "问题：" in draft.description
+    assert "场景：" in draft.description
+    assert "期望结果：" in draft.description
 
 
 def test_normalize_description_keeps_exact_three_sections() -> None:
     description = _normalize_description(
-        "Problem: Admins cannot export vote totals.\n\n"
-        "Context: Reports are prepared manually today.\n\n"
-        "Expected result: Admins can download a CSV grouped by department."
+        "问题：管理员无法导出投票总数。\n\n"
+        "场景：复盘会议需要人工整理报表。\n\n"
+        "期望结果：管理员可以下载按部门分组的 CSV。"
     )
 
     assert description == (
-        "Problem: Admins cannot export vote totals.\n\n"
-        "Context: Reports are prepared manually today.\n\n"
-        "Expected result: Admins can download a CSV grouped by department."
+        "问题：管理员无法导出投票总数。\n\n"
+        "场景：复盘会议需要人工整理报表。\n\n"
+        "期望结果：管理员可以下载按部门分组的 CSV。"
     )
 
 
 def test_normalize_description_rejects_extra_sections() -> None:
     description = _normalize_description(
-        "Problem: Admins cannot export vote totals.\n\n"
-        "Context: Reports are prepared manually today.\n\n"
-        "Expected result: Admins can download a CSV grouped by department.\n\n"
-        "Owner: Analytics team"
+        "问题：管理员无法导出投票总数。\n\n"
+        "场景：复盘会议需要人工整理报表。\n\n"
+        "期望结果：管理员可以下载按部门分组的 CSV。\n\n"
+        "负责人：分析团队"
     )
 
     assert description == (
-        "Problem: Admins cannot export vote totals. Reports are prepared manually today. "
-        "Admins can download a CSV grouped by department. Analytics team\n\n"
-        "Context: Add relevant users, workflow, and timing details.\n\n"
-        "Expected result: Describe the outcome that would make this request successful."
+        "问题：管理员无法导出投票总数。 复盘会议需要人工整理报表。 "
+        "管理员可以下载按部门分组的 CSV。 分析团队\n\n"
+        "场景：请补充相关用户、操作流程和发生时机。\n\n"
+        "期望结果：请描述这个需求完成后应达到的效果。"
     )
 
 

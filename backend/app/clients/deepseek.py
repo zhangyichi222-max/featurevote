@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
 
 
-SECTION_HEADINGS = ("Problem:", "Context:", "Expected result:")
+SECTION_HEADINGS = ("问题：", "场景：", "期望结果：")
 
 
 class DeepSeekSuggestionClient:
@@ -38,20 +38,19 @@ class DeepSeekSuggestionClient:
                 {
                     "role": "system",
                     "content": (
-                        "You convert rough product feedback into a concise feature request draft. "
-                        "Return strict JSON only with fields: title, description. "
-                        "The description must contain exactly three sections, in order: "
-                        "Problem:, Context:, Expected result:."
+                        "你负责把用户的零散产品反馈整理成清晰的需求草稿。"
+                        "默认使用简体中文输出。只返回严格 JSON，字段必须是 title 和 description。"
+                        "description 必须且只能包含三个段落，段落标题依次为：问题：、场景：、期望结果：。"
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Draft a feature request from this idea.\n\n"
-                        f"Idea: {cleaned_idea}\n\n"
-                        "Example JSON: "
-                        '{"title":"Export vote results by department",'
-                        '"description":"Problem: ...\\n\\nContext: ...\\n\\nExpected result: ..."}'
+                        "请根据下面的原始想法生成需求草稿。\n\n"
+                        f"原始想法：{cleaned_idea}\n\n"
+                        "JSON 示例："
+                        '{"title":"按部门导出投票结果",'
+                        '"description":"问题：...\\n\\n场景：...\\n\\n期望结果：..."}'
                     ),
                 },
             ],
@@ -215,22 +214,25 @@ def _load_json_object(content: str) -> dict[str, Any]:
 def _normalize_description(description: str) -> str:
     parsed_sections = _extract_ordered_sections(description)
     if parsed_sections is not None:
-        return "\n\n".join(f"{heading} {body}" for heading, body in parsed_sections)
+        return "\n\n".join(f"{heading}{body}" for heading, body in parsed_sections)
 
-    fallback_problem = _strip_extra_headings(description) or "Please describe the current problem."
+    fallback_problem = _strip_extra_headings(description) or "请补充当前遇到的问题。"
     return "\n\n".join(
         [
-            f"Problem: {fallback_problem}",
-            "Context: Add relevant users, workflow, and timing details.",
-            "Expected result: Describe the outcome that would make this request successful.",
+            f"问题：{fallback_problem}",
+            "场景：请补充相关用户、操作流程和发生时机。",
+            "期望结果：请描述这个需求完成后应达到的效果。",
         ]
     )
 
 
 def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
-    pattern = re.compile(r"(Problem:|Context:|Expected result:)")
+    pattern = re.compile(r"(问题：|场景：|期望结果：)")
     matches = list(pattern.finditer(description))
-    if [match.group(1) for match in matches] != list(SECTION_HEADINGS):
+    headings = [match.group(1) for match in matches]
+    if headings == list(SECTION_HEADINGS):
+        output_headings = SECTION_HEADINGS
+    else:
         return None
 
     parsed: list[tuple[str, str]] = []
@@ -238,16 +240,16 @@ def _extract_ordered_sections(description: str) -> list[tuple[str, str]] | None:
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(description)
         body = description[start:end].strip()
-        if not body or re.search(r"(^|\n)\s*[A-Za-z ]{1,32}:", body):
+        if not body or re.search(r"(^|\n)\s*([A-Za-z ]{1,32}:|[\u4e00-\u9fff]{1,16}：)", body):
             return None
-        parsed.append((match.group(1), body))
+        parsed.append((output_headings[index], body))
 
     prefix = description[: matches[0].start()].strip()
     return None if prefix else parsed
 
 
 def _strip_extra_headings(text: str) -> str:
-    cleaned = re.sub(r"(^|\n)\s*[A-Za-z ]{1,32}:", " ", text)
+    cleaned = re.sub(r"(^|\n)\s*([A-Za-z ]{1,32}:|[\u4e00-\u9fff]{1,16}：)", " ", text)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
