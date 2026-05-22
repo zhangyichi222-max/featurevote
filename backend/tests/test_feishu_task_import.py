@@ -111,6 +111,32 @@ def test_import_preview_rejects_malformed_jsonl(client: TestClient) -> None:
     assert "Invalid JSONL" in response.json()["detail"]
 
 
+def test_import_preview_filters_resume_and_recruiting_messages(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/tasks/imports/feishu-preview",
+        content=_resume_jsonl_bytes(),
+        cookies=_cookies("admin-user"),
+        headers={**_headers("conversation-logs.jsonl"), "Content-Type": "application/jsonl"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["candidates"] == []
+
+
+def test_import_preview_skips_non_text_messages(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/tasks/imports/feishu-preview",
+        content=_non_text_jsonl_bytes(),
+        cookies=_cookies("admin-user"),
+        headers={**_headers("conversation-logs.jsonl"), "Content-Type": "application/jsonl"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidates"] == []
+    assert data["skipped_messages_count"] == 2
+
+
 def test_admin_can_create_selected_import_candidates(client: TestClient) -> None:
     preview = client.post(
         "/api/v1/tasks/imports/feishu-preview",
@@ -168,6 +194,54 @@ def _jsonl_bytes() -> bytes:
                 "deleted": False,
                 "message_id": "message-2",
                 "msg_type": "text",
+                "sender": {"id": "ou_bob", "name": "Bob", "sender_type": "user"},
+            },
+        ],
+    }
+    return (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _resume_jsonl_bytes() -> bytes:
+    record = {
+        "id": "conversation-resume",
+        "sourceType": "chat",
+        "sourceId": "chat-resume",
+        "sourceTitle": "ai应用",
+        "messages": [
+            {
+                "content": "候选人评估｜唐锐浩 📌 基本信息 候选人姓名：唐锐浩 应聘岗位：ai应用工程师 综合评价 评价总分：80 总评价：候选人满足所有必备项条件，具备真实无人机控管 Agent 项目经验，熟练使用 Python/Java。",
+                "create_time": "2026-05-22 10:00",
+                "deleted": False,
+                "message_id": "resume-message-1",
+                "msg_type": "text",
+                "sender": {"id": "cli_a94099880c241bc0", "sender_type": "app"},
+            }
+        ],
+    }
+    return (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _non_text_jsonl_bytes() -> bytes:
+    record = {
+        "id": "conversation-files",
+        "sourceType": "chat",
+        "sourceId": "chat-files",
+        "sourceTitle": "项目群",
+        "messages": [
+            {
+                "content": {"file_key": "boxcnxxxx", "file_name": "demo.pdf"},
+                "create_time": "2026-05-22 10:00",
+                "deleted": False,
+                "message_id": "file-message-1",
+                "msg_type": "file",
+                "sender": {"id": "ou_alice", "name": "Alice", "sender_type": "user"},
+            },
+            {
+                "content": {"image_key": "img_v2_xxxx"},
+                "create_time": "2026-05-22 10:01",
+                "deleted": False,
+                "message_id": "image-message-1",
+                "msg_type": "image",
                 "sender": {"id": "ou_bob", "name": "Bob", "sender_type": "user"},
             },
         ],

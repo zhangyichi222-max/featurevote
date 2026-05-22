@@ -29,7 +29,12 @@ from app.schemas.task import (
     TaskSourcePostItem,
     TaskUpdate,
 )
-from app.services.feishu_import import append_evidence_section, generate_rule_based_candidates, parse_feishu_export
+from app.services.feishu_import import (
+    append_evidence_section,
+    generate_rule_based_candidates,
+    is_task_import_message,
+    parse_feishu_export,
+)
 
 
 class TasksService:
@@ -160,6 +165,11 @@ class TasksService:
                 candidates = await DeepSeekSuggestionClient().draft_feishu_task_candidates(ai_messages)
             except HTTPException:
                 candidates = []
+            candidates = [
+                candidate
+                for candidate in candidates
+                if any(is_task_import_message(item.content, item.conversation_title) for item in candidate.evidence)
+            ]
             if candidates:
                 return candidates
         return generate_rule_based_candidates(import_data)

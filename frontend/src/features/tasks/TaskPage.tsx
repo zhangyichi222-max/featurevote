@@ -464,6 +464,11 @@ function FeishuImportDialog({
             onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
           />
         </label>
+        <div className="import-help">
+          <strong>可导入内容</strong>
+          <p>支持飞书聊天导出的 zip，或解压后的 conversation-logs.jsonl。只会生成产品、研发、运营等可执行事项。</p>
+          <p>不会导入简历、招聘、候选人评估、面试记录、闲聊和系统消息。</p>
+        </div>
         {preview ? (
           <div className="import-summary">
             <span>{preview.conversations_count} 个会话</span>
@@ -526,7 +531,11 @@ function FeishuImportDialog({
               ) : null}
             </section>
           ))}
-          {preview && !preview.candidates.length ? <div className="task-empty">未找到候选任务。</div> : null}
+          {preview && !preview.candidates.length ? (
+            <div className="task-empty">
+              未找到可创建的任务。请确认文件里包含明确的待办、修复、跟进、排查、回复等事项；简历和候选人评估会被过滤。
+            </div>
+          ) : null}
         </div>
         {error ? <div className="form-error">{error}</div> : null}
         <div className="modal-actions">

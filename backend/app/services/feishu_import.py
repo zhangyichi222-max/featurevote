@@ -34,6 +34,29 @@ ACTION_KEYWORDS = (
     "follow",
     "support",
 )
+NON_TASK_KEYWORDS = (
+    "候选人",
+    "候选人评估",
+    "招聘",
+    "应聘",
+    "面试",
+    "简历",
+    "岗位",
+    "综合评价",
+    "总评价",
+    "评分",
+    "候选人姓名",
+    "工作年限",
+    "薪资",
+    "猎头",
+    "人才",
+    "入职",
+    "offer",
+    "resume",
+    "candidate",
+    "interview",
+    "recruit",
+)
 MAX_IMPORT_BYTES = 50 * 1024 * 1024
 MAX_JSONL_BYTES = 20 * 1024 * 1024
 MAX_CONVERSATIONS = 200
@@ -76,7 +99,7 @@ def generate_rule_based_candidates(import_data: ParsedFeishuImport, limit: int =
     candidates: list[FeishuTaskCandidate] = []
     seen_titles: set[str] = set()
     for message in import_data.messages:
-        if not _looks_actionable(message.content):
+        if not is_task_import_message(message.content, message.conversation_title):
             continue
 
         title = _build_title(message.content)
@@ -105,27 +128,14 @@ def generate_rule_based_candidates(import_data: ParsedFeishuImport, limit: int =
         if len(candidates) >= limit:
             break
 
-    if candidates:
-        return candidates
-
-    for message in import_data.messages[: min(limit, 5)]:
-        evidence = FeishuMessageEvidence(
-            conversation_id=message.conversation_id,
-            conversation_title=message.conversation_title,
-            message_id=message.message_id,
-            sender_name=message.sender_name,
-            created_at=message.created_at,
-            content=_truncate(message.content, 1200),
-        )
-        candidates.append(
-            FeishuTaskCandidate(
-                candidate_id=_candidate_id(message),
-                title=_build_title(message.content),
-                description_markdown=_build_description(message, evidence),
-                evidence=[evidence],
-            )
-        )
     return candidates
+
+
+def is_task_import_message(content: str, conversation_title: str = "") -> bool:
+    combined = f"{conversation_title} {content}".casefold()
+    if any(keyword.casefold() in combined for keyword in NON_TASK_KEYWORDS):
+        return False
+    return _looks_actionable(content)
 
 
 def append_evidence_section(description: str, evidence: list[FeishuMessageEvidence]) -> str:
@@ -199,7 +209,11 @@ def _parse_jsonl(text: str) -> ParsedFeishuImport:
         for raw_message in raw_messages:
             if len(messages) >= MAX_MESSAGES:
                 break
-            if not isinstance(raw_message, dict) or raw_message.get("deleted") or raw_message.get("msg_type") == "system":
+            if (
+                not isinstance(raw_message, dict)
+                or raw_message.get("deleted")
+                or raw_message.get("msg_type") in {"system", "image", "file", "media", "audio", "video", "sticker"}
+            ):
                 skipped_messages_count += 1
                 continue
             content = _extract_content(raw_message.get("content"))
@@ -220,8 +234,6 @@ def _parse_jsonl(text: str) -> ParsedFeishuImport:
 
     if not conversations_count:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No conversations found in import file.")
-    if not messages:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No usable messages found in import file.")
     return ParsedFeishuImport(
         messages=messages,
         conversations_count=conversations_count,
@@ -244,7 +256,6 @@ def _extract_content(value: Any) -> str:
             text = value.get(key)
             if isinstance(text, str) and text.strip():
                 return _normalize_text(text)
-        return _normalize_text(json.dumps(value, ensure_ascii=False))
     return ""
 
 

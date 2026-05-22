@@ -114,6 +114,7 @@ class DeepSeekSuggestionClient:
                         "你负责从飞书聊天记录中提取候选开发任务。只返回严格 JSON。"
                         "不要推断负责人、标签、状态、优先级或截止时间。"
                         "只输出明确可行动的任务；闲聊和系统消息忽略。"
+                        "招聘、简历、候选人评估、面试、人才筛选、岗位匹配内容必须忽略。"
                         "格式："
                         '{"candidates":[{"message_id":"string","title":"3-160 chars","description_markdown":"markdown"}]}'
                     ),

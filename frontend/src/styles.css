@@ -1195,6 +1195,7 @@ button:focus-visible {
 .feishu-import-panel .modal-header,
 .feishu-import-panel .modal-actions,
 .feishu-import-panel > .file-import-control,
+.feishu-import-panel > .import-help,
 .feishu-import-panel > .form-error,
 .import-summary,
 .import-candidate-list {
@@ -1216,6 +1217,26 @@ button:focus-visible {
 .import-candidate label {
   display: grid;
   gap: 8px;
+}
+
+.import-help {
+  background: #f8fbff;
+  border: 1px solid #d8e2ef;
+  border-radius: 8px;
+  color: #35506b;
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px 14px;
+}
+
+.import-help strong {
+  color: #17324d;
+  font-size: 0.92rem;
+}
+
+.import-help p {
+  margin: 0;
 }
 
 .import-summary {
