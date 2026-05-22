@@ -5,6 +5,9 @@ from app.models.post import UserModel
 from app.schemas.post import ActionResult
 from app.schemas.task import (
     AttachmentUploadResponse,
+    FeishuTaskImportCreateRequest,
+    FeishuTaskImportCreateResponse,
+    FeishuTaskImportPreviewResponse,
     TaskAssetUploadResponse,
     TaskAssigneeListResponse,
     TaskCreate,
@@ -43,6 +46,35 @@ async def create_task(
     admin: UserModel = Depends(require_admin_user),
 ) -> TaskItem:
     return await service.create_task(payload, admin)
+
+
+@router.post(
+    "/imports/feishu-preview",
+    response_model=FeishuTaskImportPreviewResponse,
+    dependencies=[Depends(require_mutating_origin)],
+)
+async def preview_feishu_import(
+    request: Request,
+    service: TasksService = Depends(get_tasks_service),
+    admin: UserModel = Depends(require_admin_user),
+) -> FeishuTaskImportPreviewResponse:
+    _ = admin
+    filename = request.headers.get("x-file-name", "")
+    content = await request.body()
+    return await service.preview_feishu_import(content, filename)
+
+
+@router.post(
+    "/imports/feishu-create",
+    response_model=FeishuTaskImportCreateResponse,
+    dependencies=[Depends(require_mutating_origin)],
+)
+async def create_feishu_import_tasks(
+    payload: FeishuTaskImportCreateRequest,
+    service: TasksService = Depends(get_tasks_service),
+    admin: UserModel = Depends(require_admin_user),
+) -> FeishuTaskImportCreateResponse:
+    return await service.create_feishu_import_tasks(payload, admin)
 
 
 @router.get("/assignees", response_model=TaskAssigneeListResponse)

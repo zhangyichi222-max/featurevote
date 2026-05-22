@@ -1,5 +1,15 @@
 import { apiClient } from "../../api/client";
-import type { TaskAssigneeListResponse, TaskItem, TaskLabelListResponse, TaskListResponse, TaskPayload, TaskStatus } from "../../types/task";
+import type {
+  FeishuTaskCandidate,
+  FeishuTaskImportCreateResponse,
+  FeishuTaskImportPreviewResponse,
+  TaskAssigneeListResponse,
+  TaskItem,
+  TaskLabelListResponse,
+  TaskListResponse,
+  TaskPayload,
+  TaskStatus,
+} from "../../types/task";
 
 export async function fetchTasks(filters: {
   query?: string;
@@ -54,4 +64,12 @@ export async function fetchTaskAssignees() {
 
 export async function uploadTaskImage(file: File) {
   return apiClient.upload<{ url: string }>("/task-assets/images", file);
+}
+
+export async function previewFeishuTaskImport(file: File) {
+  return apiClient.upload<FeishuTaskImportPreviewResponse>("/tasks/imports/feishu-preview", file);
+}
+
+export async function createFeishuImportedTasks(candidates: FeishuTaskCandidate[]) {
+  return apiClient.post<FeishuTaskImportCreateResponse>("/tasks/imports/feishu-create", { candidates });
 }

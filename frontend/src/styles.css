@@ -56,6 +56,11 @@
   margin-bottom: 12px;
 }
 
+.task-toolbar-actions {
+  display: inline-flex;
+  gap: 10px;
+}
+
 .task-toolbar h2 {
   font-size: 1.45rem;
   margin: 0;
@@ -88,6 +93,8 @@
 .task-filters select,
 .task-editor input,
 .task-editor select,
+.feishu-import-panel input,
+.feishu-import-panel textarea,
 .markdown-editor textarea {
   border: 1px solid #cfd9e6;
   border-radius: 8px;
@@ -1176,6 +1183,126 @@ button:focus-visible {
 .task-editor .modal-actions {
   border-top: 1px solid #e6edf5;
   padding: 14px 22px;
+}
+
+.feishu-import-panel {
+  display: grid;
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  width: min(880px, 100%);
+}
+
+.feishu-import-panel .modal-header,
+.feishu-import-panel .modal-actions,
+.feishu-import-panel > .file-import-control,
+.feishu-import-panel > .form-error,
+.import-summary,
+.import-candidate-list {
+  margin-left: 22px;
+  margin-right: 22px;
+}
+
+.feishu-import-panel .modal-header {
+  padding: 18px 0 14px;
+}
+
+.feishu-import-panel .modal-actions {
+  border-top: 1px solid #e6edf5;
+  margin-top: 0;
+  padding: 14px 0;
+}
+
+.file-import-control,
+.import-candidate label {
+  display: grid;
+  gap: 8px;
+}
+
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  margin-top: 12px;
+}
+
+.import-summary span,
+.duplicate-hints {
+  background: #f3f7fb;
+  border: 1px solid #d8e2ef;
+  border-radius: 999px;
+  color: #35506b;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.import-candidate-list {
+  display: grid;
+  gap: 12px;
+  max-height: 430px;
+  overflow: auto;
+  padding-bottom: 14px;
+}
+
+.import-candidate {
+  border: 1px solid #d8e2ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.candidate-select-row {
+  align-items: center;
+  display: flex !important;
+  font-weight: 800;
+}
+
+.candidate-select-row input {
+  height: 16px;
+  width: 16px;
+}
+
+.import-candidate textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+.candidate-evidence {
+  display: grid;
+  gap: 8px;
+}
+
+.candidate-evidence > span,
+.file-import-control > span,
+.import-candidate label > span {
+  color: #52667a;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.candidate-evidence blockquote {
+  background: #f8fbff;
+  border-left: 3px solid #2f75d6;
+  border-radius: 6px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.candidate-evidence blockquote strong,
+.candidate-evidence blockquote small {
+  display: inline-flex;
+  margin-right: 8px;
+}
+
+.candidate-evidence blockquote p {
+  color: #31465c;
+  margin: 6px 0 0;
+}
+
+.duplicate-hints {
+  border-radius: 8px;
 }
 
 .task-editor .label-picker {

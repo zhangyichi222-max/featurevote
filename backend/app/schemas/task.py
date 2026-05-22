@@ -82,3 +82,35 @@ class AttachmentUploadResponse(BaseModel):
 
 class TaskAssigneeListResponse(BaseModel):
     items: list[UserItem]
+
+
+class FeishuMessageEvidence(BaseModel):
+    conversation_id: str = Field(max_length=120)
+    conversation_title: str = Field(default="", max_length=240)
+    message_id: str = Field(max_length=120)
+    sender_name: str = Field(default="", max_length=120)
+    created_at: str = Field(default="", max_length=80)
+    content: str = Field(max_length=1200)
+
+
+class FeishuTaskCandidate(BaseModel):
+    candidate_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=3, max_length=160)
+    description_markdown: str = Field(default="", max_length=20000)
+    evidence: list[FeishuMessageEvidence] = Field(default_factory=list)
+    duplicate_hints: list[TaskSourcePostItem] = Field(default_factory=list)
+
+
+class FeishuTaskImportPreviewResponse(BaseModel):
+    candidates: list[FeishuTaskCandidate]
+    conversations_count: int
+    messages_count: int
+    skipped_messages_count: int
+
+
+class FeishuTaskImportCreateRequest(BaseModel):
+    candidates: list[FeishuTaskCandidate] = Field(min_length=1, max_length=50)
+
+
+class FeishuTaskImportCreateResponse(BaseModel):
+    items: list[TaskItem]

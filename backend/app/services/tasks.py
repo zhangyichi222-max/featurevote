@@ -1,5 +1,7 @@
 from fastapi import HTTPException, status
 
+from app.clients.deepseek import DeepSeekSuggestionClient
+from app.core.config import settings
 from app.clients.minio_storage import (
     ALLOWED_IMAGE_TYPES,
     AttachmentStorage,
@@ -13,6 +15,10 @@ from app.schemas.post import ActionResult
 from app.repositories.tasks import TasksRepository
 from app.schemas.task import (
     AttachmentUploadResponse,
+    FeishuTaskImportCreateRequest,
+    FeishuTaskImportCreateResponse,
+    FeishuTaskImportPreviewResponse,
+    FeishuTaskCandidate,
     TaskAssetUploadResponse,
     TaskAssigneeListResponse,
     TaskCreate,
@@ -20,8 +26,10 @@ from app.schemas.task import (
     TaskLabelCreate,
     TaskLabelListResponse,
     TaskListResponse,
+    TaskSourcePostItem,
     TaskUpdate,
 )
+from app.services.feishu_import import append_evidence_section, generate_rule_based_candidates, parse_feishu_export
 
 
 class TasksService:
@@ -51,6 +59,34 @@ class TasksService:
         if payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
         return self.repository.create_task(payload, user)
+
+    async def preview_feishu_import(self, content: bytes, filename: str) -> FeishuTaskImportPreviewResponse:
+        import_data = parse_feishu_export(content, filename)
+        candidates = await self._generate_feishu_candidates(import_data)
+        self._attach_duplicate_hints(candidates)
+        return FeishuTaskImportPreviewResponse(
+            candidates=candidates,
+            conversations_count=import_data.conversations_count,
+            messages_count=len(import_data.messages),
+            skipped_messages_count=import_data.skipped_messages_count,
+        )
+
+    async def create_feishu_import_tasks(
+        self,
+        payload: FeishuTaskImportCreateRequest,
+        user: UserModel,
+    ) -> FeishuTaskImportCreateResponse:
+        tasks: list[TaskItem] = []
+        for candidate in payload.candidates:
+            task_payload = TaskCreate(
+                title=candidate.title,
+                description_markdown=append_evidence_section(candidate.description_markdown, candidate.evidence),
+                status="todo",
+                assignee_user_id=None,
+                labels=[],
+            )
+            tasks.append(self.repository.create_task(task_payload, user))
+        return FeishuTaskImportCreateResponse(items=tasks)
 
     async def convert_post_to_task(self, post_id: str, payload: TaskCreate, admin: UserModel) -> TaskItem:
         if payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
@@ -98,6 +134,35 @@ class TasksService:
 
     async def list_assignees(self) -> TaskAssigneeListResponse:
         return TaskAssigneeListResponse(items=self.repository.list_assignees())
+
+    def _attach_duplicate_hints(self, candidates: list[FeishuTaskCandidate]) -> None:
+        for candidate in candidates:
+            matches = self.repository.list_tasks(query=candidate.title[:80])
+            candidate.duplicate_hints = [
+                TaskSourcePostItem(id=item.id, number=item.number, title=item.title, status=item.status)
+                for item in matches[:3]
+            ]
+
+    async def _generate_feishu_candidates(self, import_data) -> list[FeishuTaskCandidate]:
+        if settings.deepseek_enabled and settings.deepseek_api_key:
+            ai_messages = [
+                {
+                    "conversation_id": item.conversation_id,
+                    "conversation_title": item.conversation_title,
+                    "message_id": item.message_id,
+                    "sender_name": item.sender_name,
+                    "created_at": item.created_at,
+                    "content": item.content,
+                }
+                for item in import_data.messages[:80]
+            ]
+            try:
+                candidates = await DeepSeekSuggestionClient().draft_feishu_task_candidates(ai_messages)
+            except HTTPException:
+                candidates = []
+            if candidates:
+                return candidates
+        return generate_rule_based_candidates(import_data)
 
     async def upload_image(
         self,

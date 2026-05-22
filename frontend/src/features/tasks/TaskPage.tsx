@@ -3,8 +3,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { API_BASE_URL, ApiError } from "../../api/client";
 import { RichContentEditor, RichContentPreview } from "../rich-content/RichContentEditor";
 import type { CurrentUser } from "../../types/requirement";
-import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
+import type { FeishuTaskCandidate, FeishuTaskImportPreviewResponse, TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
 import {
+  createFeishuImportedTasks,
   createTask,
   createTaskLabel,
   deleteTask,
@@ -12,6 +13,7 @@ import {
   fetchTaskAssignees,
   fetchTaskLabels,
   fetchTasks,
+  previewFeishuTaskImport,
   updateTask,
   uploadTaskImage,
 } from "./api";
@@ -38,6 +40,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
@@ -159,9 +162,14 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
           <h2>开发任务</h2>
         </div>
         {isAdmin ? (
-          <button className="primary-button" type="button" onClick={() => setIsEditorOpen(true)}>
-            新建任务
-          </button>
+          <div className="task-toolbar-actions">
+            <button className="secondary-button" type="button" onClick={() => setIsImportOpen(true)}>
+              导入飞书对话
+            </button>
+            <button className="primary-button" type="button" onClick={() => setIsEditorOpen(true)}>
+              新建任务
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -266,6 +274,19 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
           onSave={handleSave}
         />
       ) : null}
+      {isImportOpen ? (
+        <FeishuImportDialog
+          isBusy={isBusy}
+          onClose={() => setIsImportOpen(false)}
+          onBusyChange={setIsBusy}
+          onCreated={async (count) => {
+            setIsImportOpen(false);
+            setNotice(`已创建 ${count} 个任务。`);
+            await loadTasks();
+          }}
+          onError={(message) => setNotice(message)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -349,6 +370,173 @@ function TaskDetail({
         <MarkdownPreview markdown={task.description_markdown || "暂无描述。"} />
       </section>
     </aside>
+  );
+}
+
+function FeishuImportDialog({
+  isBusy,
+  onClose,
+  onBusyChange,
+  onCreated,
+  onError,
+}: {
+  isBusy: boolean;
+  onClose: () => void;
+  onBusyChange: (busy: boolean) => void;
+  onCreated: (count: number) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [preview, setPreview] = useState<FeishuTaskImportPreviewResponse | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
+
+  async function handleFileChange(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setError("");
+    onBusyChange(true);
+    try {
+      const data = await previewFeishuTaskImport(file);
+      setPreview(data);
+      setSelectedIds(new Set(data.candidates.map((item) => item.candidate_id)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "导入预览失败。";
+      setError(message);
+      onError(message);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    if (!preview) {
+      return;
+    }
+    const candidates = preview.candidates.filter((item) => selectedIds.has(item.candidate_id));
+    if (!candidates.length) {
+      setError("请选择至少一个候选任务。");
+      return;
+    }
+    setError("");
+    onBusyChange(true);
+    try {
+      const data = await createFeishuImportedTasks(candidates);
+      await onCreated(data.items.length);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "任务创建失败。";
+      setError(message);
+      onError(message);
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
+  function updateCandidate(candidateId: string, patch: Partial<FeishuTaskCandidate>) {
+    setPreview((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        candidates: current.candidates.map((item) => (item.candidate_id === candidateId ? { ...item, ...patch } : item)),
+      };
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="modal-panel feishu-import-panel" onSubmit={handleCreate}>
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">飞书对话导入</p>
+            <h2>生成候选任务</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">x</button>
+        </div>
+        <label className="file-import-control">
+          <span>导出文件</span>
+          <input
+            type="file"
+            accept=".zip,.jsonl,application/zip,application/jsonl,text/plain"
+            disabled={isBusy}
+            onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
+          />
+        </label>
+        {preview ? (
+          <div className="import-summary">
+            <span>{preview.conversations_count} 个会话</span>
+            <span>{preview.messages_count} 条可用消息</span>
+            <span>{preview.skipped_messages_count} 条已跳过</span>
+          </div>
+        ) : null}
+        <div className="import-candidate-list">
+          {preview?.candidates.map((candidate) => (
+            <section className="import-candidate" key={candidate.candidate_id}>
+              <label className="candidate-select-row">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(candidate.candidate_id)}
+                  onChange={(event) => {
+                    setSelectedIds((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) {
+                        next.add(candidate.candidate_id);
+                      } else {
+                        next.delete(candidate.candidate_id);
+                      }
+                      return next;
+                    });
+                  }}
+                />
+                <span>创建此任务</span>
+              </label>
+              <label>
+                <span>标题</span>
+                <input
+                  value={candidate.title}
+                  minLength={3}
+                  maxLength={160}
+                  onChange={(event) => updateCandidate(candidate.candidate_id, { title: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>描述</span>
+                <textarea
+                  value={candidate.description_markdown}
+                  maxLength={20000}
+                  onChange={(event) => updateCandidate(candidate.candidate_id, { description_markdown: event.target.value })}
+                />
+              </label>
+              <div className="candidate-evidence">
+                <span>来源证据</span>
+                {candidate.evidence.map((item) => (
+                  <blockquote key={`${candidate.candidate_id}-${item.message_id}`}>
+                    <strong>{item.conversation_title || item.conversation_id}</strong>
+                    {item.sender_name ? <small>{item.sender_name}</small> : null}
+                    <p>{item.content}</p>
+                  </blockquote>
+                ))}
+              </div>
+              {candidate.duplicate_hints.length ? (
+                <div className="duplicate-hints">
+                  可能重复：{candidate.duplicate_hints.map((item) => `TASK-${item.number} ${item.title}`).join("、")}
+                </div>
+              ) : null}
+            </section>
+          ))}
+          {preview && !preview.candidates.length ? <div className="task-empty">未找到候选任务。</div> : null}
+        </div>
+        {error ? <div className="form-error">{error}</div> : null}
+        <div className="modal-actions">
+          <button className="secondary-button" type="button" onClick={onClose}>取消</button>
+          <button className="primary-button" type="submit" disabled={isBusy || !preview?.candidates.length}>
+            {isBusy ? "处理中..." : "创建选中任务"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
