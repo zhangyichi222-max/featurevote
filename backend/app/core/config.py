@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     feishu_import_default_tags: list[str] = ["飞书导入"]
     feishu_import_min_text_chars: int = 20
     feishu_import_duplicate_threshold: float = 0.72
+    feishu_import_notify_chat: bool = True
     auth_cookie_name: str = "featurevote_session"
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"

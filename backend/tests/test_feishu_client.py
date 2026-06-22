@@ -38,6 +38,29 @@ def test_feishu_url_error_includes_reason(monkeypatch: pytest.MonkeyPatch) -> No
     assert "timed out" in str(exc.value)
 
 
+def test_send_chat_text_message_posts_to_chat_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FeishuClient()
+    monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")
+    captured = {}
+
+    def fake_post(url, payload, bearer_token=None):
+        captured["url"] = url
+        captured["payload"] = payload
+        captured["bearer_token"] = bearer_token
+        return {"code": 0}
+
+    monkeypatch.setattr(client, "_post_json", fake_post)
+
+    client.send_chat_text_message("oc_test", "Import done", uuid="summary-1")
+
+    assert "receive_id_type=chat_id" in captured["url"]
+    assert "uuid=summary-1" in captured["url"]
+    assert captured["bearer_token"] == "tenant-token"
+    assert captured["payload"]["receive_id"] == "oc_test"
+    assert captured["payload"]["msg_type"] == "text"
+    assert captured["payload"]["content"] == '{"text": "Import done"}'
+
+
 def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FeishuClient()
     monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")

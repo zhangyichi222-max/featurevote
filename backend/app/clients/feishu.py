@@ -118,6 +118,19 @@ class FeishuClient:
         }
         self._post_json(url, payload, bearer_token=token)
 
+    def send_chat_text_message(self, chat_id: str, text: str, uuid: str | None = None) -> None:
+        token = self.get_tenant_access_token()
+        params = {"receive_id_type": "chat_id"}
+        if uuid:
+            params["uuid"] = uuid
+        url = f"{self.message_url}?{parse.urlencode(params)}"
+        payload = {
+            "receive_id": chat_id,
+            "msg_type": "text",
+            "content": json.dumps({"text": text}, ensure_ascii=False),
+        }
+        self._post_json(url, payload, bearer_token=token)
+
     def list_chat_text_messages(
         self,
         chat_id: str,

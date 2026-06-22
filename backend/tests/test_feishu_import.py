@@ -22,7 +22,7 @@ def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None
     _configure(monkeypatch, chat_ids=["oc_test"])
     service = FeishuRequirementImportService(
         PostsRepository(session),
-        feishu_client=FakeFeishuClient([_message("om_1", text="希望支持按部门导出投票结果，方便复盘每个团队最关心的需求。")]),
+        feishu_client=FakeFeishuClient([_message("om_1")]),
         deepseek_client=FakeDeepSeekClient(),
     )
 
@@ -30,9 +30,10 @@ def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert stats.created == 1
     assert stats.fetched == 1
+    assert stats.created_titles == ["Export votes by department"]
     post = session.scalar(select(PostModel).where(PostModel.title == "Export votes by department"))
     assert post is not None
-    assert [tag.name for tag in post.tags] == ["飞书导入"]
+    assert [tag.name for tag in post.tags] == ["Feishu Import"]
     record = session.scalar(select(FeishuImportedMessageModel).where(FeishuImportedMessageModel.message_id == "om_1"))
     assert record is not None
     assert record.status == "created"
@@ -42,7 +43,7 @@ def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None
 def test_import_skips_previously_processed_message(monkeypatch: pytest.MonkeyPatch) -> None:
     session = _session()
     _configure(monkeypatch, chat_ids=["oc_test"])
-    message = _message("om_1", text="希望支持按部门导出投票结果，方便复盘每个团队最关心的需求。")
+    message = _message("om_1")
     service = FeishuRequirementImportService(
         PostsRepository(session),
         feishu_client=FakeFeishuClient([message]),
@@ -54,6 +55,7 @@ def test_import_skips_previously_processed_message(monkeypatch: pytest.MonkeyPat
 
     assert first.created == 1
     assert second.skipped == 1
+    assert second.created_titles == []
     assert session.scalar(select(PostModel).where(PostModel.title == "Export votes by department")).number == 1
 
 
@@ -78,6 +80,7 @@ def test_import_votes_for_duplicate_from_different_sender(monkeypatch: pytest.Mo
     stats = asyncio.run(service.import_configured_chats())
 
     assert stats.voted == 1
+    assert stats.created_titles == []
     assert session.scalar(select(VoteModel).where(VoteModel.post_id == original.id)) is not None
     record = session.scalar(select(FeishuImportedMessageModel).where(FeishuImportedMessageModel.message_id == "om_2"))
     assert record.status == "voted"
@@ -120,28 +123,58 @@ def test_import_records_failed_message_and_continues(monkeypatch: pytest.MonkeyP
     service = FeishuRequirementImportService(
         PostsRepository(session),
         feishu_client=FakeFeishuClient([
-            _message("om_bad", text="这是一条会触发 AI 失败但长度足够的飞书需求消息。"),
-            _message("om_good", text="希望支持按部门导出投票结果，方便复盘每个团队最关心的需求。"),
+            _message("om_bad", text="This message makes AI fail but is long enough for import."),
+            _message("om_good"),
         ]),
-        deepseek_client=FakeDeepSeekClient(fail_ids={"这是一条会触发 AI 失败但长度足够的飞书需求消息。"}),
+        deepseek_client=FakeDeepSeekClient(fail_ids={"This message makes AI fail but is long enough for import."}),
     )
 
     stats = asyncio.run(service.import_configured_chats())
 
     assert stats.failed == 1
     assert stats.created == 1
+    assert stats.created_titles == ["Export votes by department"]
     failed = session.scalar(select(FeishuImportedMessageModel).where(FeishuImportedMessageModel.message_id == "om_bad"))
     assert failed.status == "failed"
     assert "AI unavailable" in failed.error
 
 
+def test_import_sends_chat_summary_with_created_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    feishu_client = FakeFeishuClient([_message("om_summary")])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=feishu_client,
+        deepseek_client=FakeDeepSeekClient(),
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+    second = asyncio.run(service.import_configured_chats())
+
+    assert stats.created == 1
+    assert second.skipped == 1
+    assert len(feishu_client.sent_messages) == 1
+    chat_id, summary = feishu_client.sent_messages[0]
+    assert chat_id == "oc_test"
+    assert "FeatureVote 需求导入已完成" in summary
+    assert "新增需求：1" in summary
+    assert "新增需求标题：" in summary
+    assert "- Export votes by department" in summary
+
+
 class FakeFeishuClient:
     def __init__(self, messages: Sequence[FeishuChatMessage]) -> None:
         self.messages = list(messages)
+        self.sent_messages: list[tuple[str, str]] = []
 
     def list_chat_text_messages(self, chat_id: str, *, page_size: int = 50, page_token: str | None = None):
         _ = chat_id, page_size, page_token
         return self.messages, None
+
+    def send_chat_text_message(self, chat_id: str, text: str, uuid: str | None = None) -> None:
+        _ = uuid
+        self.sent_messages.append((chat_id, text))
 
 
 class FakeDeepSeekClient:
@@ -174,14 +207,15 @@ def _configure(monkeypatch: pytest.MonkeyPatch, *, chat_ids: list[str]) -> None:
     monkeypatch.setattr(settings, "feishu_import_batch_size", 50)
     monkeypatch.setattr(settings, "feishu_import_min_text_chars", 20)
     monkeypatch.setattr(settings, "feishu_import_duplicate_threshold", 0.72)
-    monkeypatch.setattr(settings, "feishu_import_default_tags", ["飞书导入"])
+    monkeypatch.setattr(settings, "feishu_import_default_tags", ["Feishu Import"])
+    monkeypatch.setattr(settings, "feishu_import_notify_chat", True)
 
 
 def _message(
     message_id: str,
     *,
     sender_open_id: str = "ou_alice",
-    text: str = "希望支持按部门导出投票结果，方便复盘每个团队最关心的需求。",
+    text: str = "Need department export for vote results so teams can review priorities.",
 ) -> FeishuChatMessage:
     return FeishuChatMessage(
         message_id=message_id,
