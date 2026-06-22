@@ -1,1 +1,89 @@
-/* Shared modal rules can move here as the UI evolves. */
+/* Shared modal and overlay structure. */
+
+.modal-backdrop,
+.detail-backdrop {
+position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(23, 32, 51, 0.46);
+}
+
+.modal-backdrop {
+display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.modal-panel,
+.detail-panel {
+background: #fff;
+  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.26);
+}
+
+.modal-panel {
+width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 8px;
+}
+
+.modal-header,
+.detail-header,
+.modal-actions {
+display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-header h2 {
+margin: 0;
+  font-size: 1.5rem;
+}
+
+.detail-backdrop {
+overflow: auto;
+  padding: 28px 24px;
+}
+
+.detail-panel {
+max-width: 1060px;
+  min-height: calc(100vh - 56px);
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+.detail-header {
+position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e3e9f2;
+  border-radius: 8px 8px 0 0;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 640px) {
+  .modal-actions {
+  align-items: flex-start;
+      flex-direction: column;
+  }
+
+  .modal-actions button {
+  width: 100%;
+  }
+
+  .detail-backdrop {
+  padding: 0;
+  }
+
+  .detail-panel {
+  min-height: 100vh;
+      border-radius: 0;
+  }
+
+  .detail-header {
+  border-radius: 0;
+  }
+}
