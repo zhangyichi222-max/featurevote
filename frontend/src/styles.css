@@ -1168,6 +1168,7 @@ button:focus-visible {
 }
 
 .task-editor > label,
+.task-editor > .task-editor-field,
 .task-editor > .task-editor-grid,
 .task-editor > .markdown-editor,
 .task-editor > .rich-content-editor,
@@ -1175,7 +1176,8 @@ button:focus-visible {
   margin: 0 22px 14px;
 }
 
-.task-editor > label {
+.task-editor > label,
+.task-editor > .task-editor-field {
   display: grid;
   gap: 8px;
 }

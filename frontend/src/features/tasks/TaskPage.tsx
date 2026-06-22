@@ -440,7 +440,7 @@ function TaskEditor({
             </select>
           </label>
         </div>
-        <label>
+        <div className="task-editor-field">
           <span>标签</span>
           <div className="label-picker">
             {labels.map((item) => (
@@ -502,7 +502,7 @@ function TaskEditor({
               });
             }}>添加标签</button>
           </div> : null}
-        </label>
+        </div>
         <MarkdownEditor value={description} onChange={setDescription} onImage={handleImage} />
         {error ? <div className="form-error">{error}</div> : null}
         <div className="modal-actions">
