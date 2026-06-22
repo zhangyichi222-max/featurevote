@@ -21,7 +21,9 @@ async def import_once() -> int:
     print(
         "Feishu import: "
         f"fetched={stats.fetched}, skipped={stats.skipped}, created={stats.created}, "
-        f"voted={stats.voted}, already_voted={stats.already_voted}, failed={stats.failed}",
+        f"voted={stats.voted}, already_voted={stats.already_voted}, failed={stats.failed}, "
+        f"windows_processed={stats.windows_processed}, generated_requirements={stats.generated_requirements}, "
+        f"grouped_messages={stats.grouped_messages}, low_confidence_skipped={stats.low_confidence_skipped}",
         flush=True,
     )
     return total_actions

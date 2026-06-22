@@ -10,6 +10,13 @@ class SuggestionDraftResponse(BaseModel):
     description: str = Field(min_length=1, max_length=5000)
 
 
+class FeishuRequirementDraft(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=1, max_length=5000)
+    source_message_ids: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=1.0, ge=0, le=1)
+
+
 class SimilarRequirementsRequest(BaseModel):
     title: str = Field(default="", max_length=120)
     description: str = Field(default="", max_length=5000)

@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     feishu_import_min_text_chars: int = 20
     feishu_import_duplicate_threshold: float = 0.72
     feishu_import_notify_chat: bool = True
+    feishu_import_grouping_enabled: bool = True
+    feishu_import_window_minutes: int = 60
+    feishu_import_min_confidence: float = 0.65
+    feishu_import_max_messages_per_summary: int = 50
     auth_cookie_name: str = "featurevote_session"
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"

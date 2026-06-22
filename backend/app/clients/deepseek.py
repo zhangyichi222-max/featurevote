@@ -7,7 +7,8 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
+from app.clients.feishu import FeishuChatMessage
+from app.schemas.ai import FeishuRequirementDraft, SimilarRequirementItem, SuggestionDraftResponse
 
 
 SECTION_HEADINGS = ("问题：", "场景：", "期望结果：")
@@ -57,6 +58,50 @@ class DeepSeekSuggestionClient:
             service_name="AI drafting",
         )
         return _parse_suggestion_draft(content)
+
+    async def summarize_feishu_requirements(
+        self,
+        messages: list[FeishuChatMessage],
+    ) -> list[FeishuRequirementDraft]:
+        if not settings.deepseek_enabled or not settings.deepseek_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI drafting is not enabled.",
+            )
+
+        if not messages:
+            return []
+
+        window_text = _format_feishu_messages(messages)
+        if len(window_text) > settings.deepseek_max_text_chars:
+            window_text = window_text[: settings.deepseek_max_text_chars]
+
+        content = await self._chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "你负责把同一时间窗口内的飞书聊天记录归纳成产品反馈看板中的投票需求。"
+                        "这些消息通常围绕同一个任务讨论，但也可能包含多个话题。"
+                        "请优先提炼用户问题、业务目标和期望结果，不要把脚本名、命令名、日志、临时实现方案单独当成需求。"
+                        "如果同一目标被多次讨论，只输出一个需求。"
+                        "如果内容不是需求、信息不足或只是闲聊/日志/命令输出，不要输出需求。"
+                        "默认使用简体中文。只返回严格 JSON，格式为："
+                        '{"requirements":[{"title":"string","description":"问题：...\\n\\n场景：...\\n\\n期望结果：...",'
+                        '"source_message_ids":["message_id"],"confidence":0.0}]}。'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "请根据下面同一时间窗口内的飞书消息，按主题归纳出 0 到多个可投票需求。\n\n"
+                        f"{window_text}"
+                    ),
+                },
+            ],
+            service_name="Feishu requirement summarization",
+        )
+        return _parse_feishu_requirement_drafts(content)
 
     async def assess_similar_requirements(
         self,
@@ -185,6 +230,53 @@ def _parse_suggestion_draft(content: str) -> SuggestionDraftResponse:
         ) from exc
 
 
+def _parse_feishu_requirement_drafts(content: str) -> list[FeishuRequirementDraft]:
+    payload = _load_json_object(content)
+    raw_requirements = payload.get("requirements", [])
+    if not isinstance(raw_requirements, list):
+        return []
+
+    drafts: list[FeishuRequirementDraft] = []
+    for item in raw_requirements:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        description = _normalize_description(str(item.get("description", "")).strip())
+        raw_source_ids = item.get("source_message_ids", [])
+        source_message_ids = [
+            str(message_id).strip()
+            for message_id in raw_source_ids
+            if isinstance(message_id, str) and message_id.strip()
+        ]
+        confidence = item.get("confidence", 1.0)
+        try:
+            confidence_value = float(confidence)
+        except (TypeError, ValueError):
+            confidence_value = 0.0
+        try:
+            drafts.append(
+                FeishuRequirementDraft(
+                    title=title,
+                    description=description,
+                    source_message_ids=source_message_ids,
+                    confidence=max(0.0, min(confidence_value, 1.0)),
+                )
+            )
+        except ValidationError:
+            continue
+    return drafts
+
+
+def _format_feishu_messages(messages: list[FeishuChatMessage]) -> str:
+    lines = ["飞书消息："]
+    for message in messages:
+        sent_at = message.sent_at.isoformat() if message.sent_at else "unknown-time"
+        sender = message.sender_name or message.sender_open_id or "unknown-sender"
+        text = message.text.strip().replace("\r", " ").replace("\n", " ")
+        lines.append(f"- id={message.message_id}; time={sent_at}; sender={sender}; text={text}")
+    return "\n".join(lines)
+
+
 def _load_json_object(content: str) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
@@ -289,5 +381,3 @@ def _parse_similarity_assessment(
             )
         )
     return sorted(enhanced, key=lambda item: item.similarity, reverse=True)
-
-

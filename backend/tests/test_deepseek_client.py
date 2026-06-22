@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from app.clients.deepseek import (
     DeepSeekSuggestionClient,
     _normalize_description,
+    _parse_feishu_requirement_drafts,
     _parse_suggestion_draft,
 )
 
@@ -70,6 +71,19 @@ def test_parse_suggestion_draft_rejects_invalid_content() -> None:
         assert exc.status_code == 502
     else:
         raise AssertionError("Expected invalid AI content to raise HTTPException.")
+
+
+def test_parse_feishu_requirement_drafts_accepts_grouped_json() -> None:
+    drafts = _parse_feishu_requirement_drafts(
+        '{"requirements":[{"title":"一键部署测试环境",'
+        '"description":"问题：测试部署依赖手动步骤。\\n\\n场景：开发完成后需要验证。\\n\\n期望结果：一键部署到测试环境。",'
+        '"source_message_ids":["om_1","om_2"],"confidence":0.87}]}'
+    )
+
+    assert len(drafts) == 1
+    assert drafts[0].title == "一键部署测试环境"
+    assert drafts[0].source_message_ids == ["om_1", "om_2"]
+    assert drafts[0].confidence == 0.87
 
 
 async def _fake_post_non_json(url: str, json: dict, headers: dict):

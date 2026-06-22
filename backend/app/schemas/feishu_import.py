@@ -8,6 +8,10 @@ class FeishuImportRunResponse(BaseModel):
     voted: int = 0
     already_voted: int = 0
     failed: int = 0
+    windows_processed: int = 0
+    generated_requirements: int = 0
+    grouped_messages: int = 0
+    low_confidence_skipped: int = 0
     created_titles: list[str] = Field(default_factory=list)
 
     def add(self, key: str, amount: int = 1) -> None:

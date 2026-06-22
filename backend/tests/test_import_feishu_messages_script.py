@@ -75,6 +75,10 @@ class _Stats:
     voted = 2
     already_voted = 1
     failed = 1
+    windows_processed = 1
+    generated_requirements = 1
+    grouped_messages = 3
+    low_confidence_skipped = 0
 
 
 class _FakeSession:
