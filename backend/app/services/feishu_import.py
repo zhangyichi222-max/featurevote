@@ -74,19 +74,33 @@ class FeishuRequirementImportService:
         stats: FeishuImportRunResponse,
     ) -> None:
         eligible: list[FeishuChatMessage] = []
+        duplicate_skipped = 0
+        filtered_skipped = 0
         for message in messages:
             if self.repository.get_imported_feishu_message(message.message_id) is not None:
                 stats.add("skipped")
+                duplicate_skipped += 1
                 continue
 
             cleaned_text = message.text.strip()
             if self._should_skip(message, cleaned_text):
                 self._record(message, "skipped", raw_text=cleaned_text)
                 stats.add("skipped")
+                filtered_skipped += 1
                 continue
             eligible.append(message)
 
-        for window in _message_windows(eligible):
+        windows = _message_windows(eligible)
+        if settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import grouping prepared: fetched=%s duplicate_skipped=%s filtered_skipped=%s eligible=%s windows=%s",
+                len(messages),
+                duplicate_skipped,
+                filtered_skipped,
+                len(eligible),
+                len(windows),
+            )
+        for window in windows:
             stats.add("windows_processed")
             await self._process_message_window(window, stats)
 
@@ -100,15 +114,35 @@ class FeishuRequirementImportService:
 
         message_by_id = {message.message_id: message for message in messages}
         handled_message_ids: set[str] = set()
+        if settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import processing window: message_count=%s message_ids=%s preview=%s",
+                len(messages),
+                ",".join(message_by_id),
+                _window_preview(messages),
+            )
 
         try:
             drafts = await self.deepseek_client.summarize_feishu_requirements(messages)
         except Exception as exc:  # noqa: BLE001 - per-window isolation for batch imports.
             detail = _error_detail(exc)
+            if settings.feishu_import_debug_logging:
+                logger.info(
+                    "Feishu import window failed: message_ids=%s error=%s",
+                    ",".join(message_by_id),
+                    detail,
+                )
             for message in messages:
                 self._record(message, "failed", raw_text=message.text.strip(), error=detail)
                 stats.add("failed")
             return
+        if settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import parsed window drafts: message_ids=%s draft_count=%s drafts=%s",
+                ",".join(message_by_id),
+                len(drafts),
+                _drafts_preview(drafts),
+            )
 
         for draft in drafts:
             source_messages = [
@@ -126,6 +160,13 @@ class FeishuRequirementImportService:
                 continue
 
             if draft.confidence < settings.feishu_import_min_confidence:
+                if settings.feishu_import_debug_logging:
+                    logger.info(
+                        "Feishu import skipped low-confidence draft: title=%s confidence=%.3f source_message_ids=%s",
+                        draft.title,
+                        draft.confidence,
+                        ",".join(message.message_id for message in source_messages),
+                    )
                 for message in source_messages:
                     self._record(message, "skipped", raw_text=message.text.strip())
                     handled_message_ids.add(message.message_id)
@@ -145,6 +186,12 @@ class FeishuRequirementImportService:
         for message in messages:
             if message.message_id in handled_message_ids:
                 continue
+            if settings.feishu_import_debug_logging:
+                logger.info(
+                    "Feishu import skipped unassigned window message: message_id=%s text=%s",
+                    message.message_id,
+                    _truncate_debug_text(message.text.strip()),
+                )
             self._record(message, "skipped", raw_text=message.text.strip())
             stats.add("skipped")
 
@@ -220,11 +267,32 @@ class FeishuRequirementImportService:
 
     def _should_skip(self, message: FeishuChatMessage, cleaned_text: str) -> bool:
         if len(cleaned_text) < settings.feishu_import_min_text_chars:
+            if settings.feishu_import_debug_logging:
+                logger.info(
+                    "Feishu import pre-filter skipped short message: message_id=%s chars=%s text=%s",
+                    message.message_id,
+                    len(cleaned_text),
+                    _truncate_debug_text(cleaned_text),
+                )
             return True
         sender_type = (message.sender_type or "").lower()
         if sender_type in {"app", "bot"}:
+            if settings.feishu_import_debug_logging:
+                logger.info(
+                    "Feishu import pre-filter skipped sender message: message_id=%s sender_type=%s text=%s",
+                    message.message_id,
+                    sender_type,
+                    _truncate_debug_text(cleaned_text),
+                )
             return True
-        return _looks_like_non_requirement(cleaned_text)
+        skipped = _looks_like_non_requirement(cleaned_text)
+        if skipped and settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import pre-filter skipped non-requirement message: message_id=%s text=%s",
+                message.message_id,
+                _truncate_debug_text(cleaned_text),
+            )
+        return skipped
 
     def _record(
         self,
@@ -346,6 +414,32 @@ def _message_windows(messages: list[FeishuChatMessage]) -> list[list[FeishuChatM
     for index in range(0, len(untimed_messages), max_messages):
         windows.append(untimed_messages[index:index + max_messages])
     return windows
+
+
+def _window_preview(messages: list[FeishuChatMessage]) -> str:
+    lines = []
+    for message in messages:
+        sent_at = message.sent_at.isoformat() if message.sent_at else "unknown-time"
+        text = message.text.strip().replace("\r", " ").replace("\n", " ")
+        lines.append(f"{message.message_id}@{sent_at}: {text}")
+    return _truncate_debug_text(" | ".join(lines))
+
+
+def _drafts_preview(drafts) -> str:
+    parts = []
+    for draft in drafts:
+        parts.append(
+            f"title={draft.title!r}, confidence={draft.confidence:.3f}, "
+            f"source_message_ids={','.join(draft.source_message_ids)}"
+        )
+    return _truncate_debug_text(" | ".join(parts) if parts else "<none>")
+
+
+def _truncate_debug_text(text: str) -> str:
+    max_chars = max(200, settings.feishu_import_debug_log_max_chars)
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}... [truncated {len(text) - max_chars} chars]"
 
 
 def _looks_like_non_requirement(text: str) -> bool:

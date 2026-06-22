@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.schemas.ai import FeishuRequirementDraft, SimilarRequirementItem, Sugge
 
 
 SECTION_HEADINGS = ("问题：", "场景：", "期望结果：")
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekSuggestionClient:
@@ -75,6 +77,13 @@ class DeepSeekSuggestionClient:
         window_text = _format_feishu_messages(messages)
         if len(window_text) > settings.deepseek_max_text_chars:
             window_text = window_text[: settings.deepseek_max_text_chars]
+        if settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import AI window input: message_count=%s chars=%s content=%s",
+                len(messages),
+                len(window_text),
+                _truncate_debug_text(window_text),
+            )
 
         content = await self._chat(
             [
@@ -101,6 +110,13 @@ class DeepSeekSuggestionClient:
             ],
             service_name="Feishu requirement summarization",
         )
+        if settings.feishu_import_debug_logging:
+            logger.info(
+                "Feishu import AI raw response: message_count=%s chars=%s content=%s",
+                len(messages),
+                len(content),
+                _truncate_debug_text(content),
+            )
         return _parse_feishu_requirement_drafts(content)
 
     async def assess_similar_requirements(
@@ -275,6 +291,13 @@ def _format_feishu_messages(messages: list[FeishuChatMessage]) -> str:
         text = message.text.strip().replace("\r", " ").replace("\n", " ")
         lines.append(f"- id={message.message_id}; time={sent_at}; sender={sender}; text={text}")
     return "\n".join(lines)
+
+
+def _truncate_debug_text(text: str) -> str:
+    max_chars = max(200, settings.feishu_import_debug_log_max_chars)
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}... [truncated {len(text) - max_chars} chars]"
 
 
 def _load_json_object(content: str) -> dict[str, Any]:

@@ -1,6 +1,7 @@
 from pathlib import Path
 import argparse
 import asyncio
+import logging
 import sys
 import time
 
@@ -10,6 +11,11 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.repositories.posts import PostsRepository
 from app.services.feishu_import import FeishuRequirementImportService
+
+
+def configure_logging() -> None:
+    level = logging.INFO if settings.feishu_import_debug_logging else logging.WARNING
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 async def import_once() -> int:
@@ -54,6 +60,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    configure_logging()
     args = parse_args()
     if args.interval <= 0:
         raise SystemExit("--interval must be greater than 0.")
