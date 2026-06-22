@@ -49,35 +49,3 @@ export interface TaskPayload {
   labels: string[];
 }
 
-export interface FeishuMessageEvidence {
-  conversation_id: string;
-  conversation_title: string;
-  message_id: string;
-  sender_name: string;
-  created_at: string;
-  content: string;
-}
-
-export interface FeishuTaskCandidate {
-  candidate_id: string;
-  title: string;
-  description_markdown: string;
-  evidence: FeishuMessageEvidence[];
-  duplicate_hints: Array<{
-    id: string;
-    number: number;
-    title: string;
-    status: string;
-  }>;
-}
-
-export interface FeishuTaskImportPreviewResponse {
-  candidates: FeishuTaskCandidate[];
-  conversations_count: number;
-  messages_count: number;
-  skipped_messages_count: number;
-}
-
-export interface FeishuTaskImportCreateResponse {
-  items: TaskItem[];
-}

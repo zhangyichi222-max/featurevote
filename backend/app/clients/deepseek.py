@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.ai import SimilarRequirementItem, SuggestionDraftResponse
-from app.schemas.task import FeishuMessageEvidence, FeishuTaskCandidate
 
 
 SECTION_HEADINGS = ("问题：", "场景：", "期望结果：")
@@ -100,33 +99,6 @@ class DeepSeekSuggestionClient:
             service_name="AI similarity",
         )
         return _parse_similarity_assessment(content, candidates)
-
-    async def draft_feishu_task_candidates(self, messages: list[dict[str, str]]) -> list[FeishuTaskCandidate]:
-        if not settings.deepseek_enabled or not settings.deepseek_api_key or not messages:
-            return []
-
-        message_text = json.dumps(messages[:80], ensure_ascii=False)
-        content = await self._chat(
-            [
-                {
-                    "role": "system",
-                    "content": (
-                        "你负责从飞书聊天记录中提取候选开发任务。只返回严格 JSON。"
-                        "不要推断负责人、标签、状态、优先级或截止时间。"
-                        "只输出明确可行动的任务；闲聊和系统消息忽略。"
-                        "招聘、简历、候选人评估、面试、人才筛选、岗位匹配内容必须忽略。"
-                        "格式："
-                        '{"candidates":[{"message_id":"string","title":"3-160 chars","description_markdown":"markdown"}]}'
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"消息列表：{message_text}",
-                },
-            ],
-            service_name="Feishu task import",
-        )
-        return _parse_feishu_task_candidates(content, messages)
 
     async def _chat(self, messages: list[dict[str, str]], *, service_name: str) -> str:
         url = f"{settings.deepseek_base_url.rstrip('/')}/chat/completions"
@@ -319,36 +291,3 @@ def _parse_similarity_assessment(
     return sorted(enhanced, key=lambda item: item.similarity, reverse=True)
 
 
-def _parse_feishu_task_candidates(content: str, messages: list[dict[str, str]]) -> list[FeishuTaskCandidate]:
-    payload = _load_json_object(content)
-    raw_candidates = payload.get("candidates", [])
-    if not isinstance(raw_candidates, list):
-        return []
-
-    by_message_id = {item.get("message_id", ""): item for item in messages}
-    candidates: list[FeishuTaskCandidate] = []
-    for index, item in enumerate(raw_candidates[:20]):
-        if not isinstance(item, dict):
-            continue
-        message_id = str(item.get("message_id", "")).strip()
-        source = by_message_id.get(message_id, {})
-        evidence = FeishuMessageEvidence(
-            conversation_id=source.get("conversation_id", ""),
-            conversation_title=source.get("conversation_title", ""),
-            message_id=message_id or f"ai-{index}",
-            sender_name=source.get("sender_name", ""),
-            created_at=source.get("created_at", ""),
-            content=source.get("content", "")[:1200],
-        )
-        try:
-            candidates.append(
-                FeishuTaskCandidate(
-                    candidate_id=f"ai-{index}-{message_id or 'candidate'}"[:80],
-                    title=str(item.get("title", "")).strip(),
-                    description_markdown=str(item.get("description_markdown", "")).strip(),
-                    evidence=[evidence] if evidence.content else [],
-                )
-            )
-        except ValidationError:
-            continue
-    return candidates
