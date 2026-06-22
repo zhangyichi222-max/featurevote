@@ -89,3 +89,39 @@ python scripts/process_notifications.py --watch --interval 3
 ```
 
 The one-shot command is still useful for manual retries. Watch mode keeps polling pending tasks and retries without blocking product actions.
+
+## Feishu Chat Import
+
+Configure one or more Feishu group chats for requirement import:
+
+```env
+FEISHU_IMPORT_CHAT_IDS=oc_xxx,oc_yyy
+FEISHU_IMPORT_INTERVAL_SECONDS=60
+FEISHU_IMPORT_BATCH_SIZE=50
+FEISHU_IMPORT_DEFAULT_TAGS=飞书导入
+FEISHU_IMPORT_MIN_TEXT_CHARS=20
+FEISHU_IMPORT_DUPLICATE_THRESHOLD=0.72
+```
+
+Run migrations after deploying import changes:
+
+```bash
+cd backend
+python -m alembic upgrade head
+```
+
+Import once:
+
+```bash
+cd backend
+python scripts/import_feishu_messages.py --once
+```
+
+For continuous polling, run it under systemd or supervisor:
+
+```bash
+cd backend
+python scripts/import_feishu_messages.py --watch --interval 60
+```
+
+Admins can also trigger one import pass with `POST /api/v1/feishu-import/run`.

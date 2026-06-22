@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import (
     CommentModel,
+    FeishuImportedMessageModel,
     NotificationTaskModel,
     PostModel,
     PostResponseModel,
@@ -298,6 +299,74 @@ class PostsRepository:
         self.session.add(user)
         self.session.flush()
         return user
+
+    def ensure_feishu_user(self, open_id: str, name: str | None = None) -> UserModel:
+        user = self.session.scalar(
+            select(UserModel).where(UserModel.tenant_id == DEFAULT_TENANT_ID, UserModel.feishu_open_id == open_id)
+        )
+        display_name = name or "Feishu User"
+        if user is not None:
+            if user.name != display_name:
+                user.name = display_name
+                self.session.add(user)
+                self.session.flush()
+            return user
+
+        user = UserModel(
+            id=uuid4().hex,
+            tenant_id=DEFAULT_TENANT_ID,
+            external_id=f"feishu:{open_id}",
+            feishu_open_id=open_id,
+            name=display_name,
+            role="visitor",
+            created_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        self.session.add(user)
+        self.session.flush()
+        return user
+
+    def get_imported_feishu_message(self, message_id: str) -> FeishuImportedMessageModel | None:
+        return self.session.scalar(
+            select(FeishuImportedMessageModel).where(FeishuImportedMessageModel.message_id == message_id)
+        )
+
+    def record_feishu_import(
+        self,
+        *,
+        message_id: str,
+        chat_id: str,
+        sender_open_id: str | None,
+        sender_name: str | None,
+        raw_text: str,
+        status: str,
+        post_id: str | None = None,
+        error: str | None = None,
+    ) -> FeishuImportedMessageModel:
+        record = FeishuImportedMessageModel(
+            id=uuid4().hex,
+            tenant_id=DEFAULT_TENANT_ID,
+            message_id=message_id,
+            chat_id=chat_id,
+            sender_open_id=sender_open_id,
+            sender_name=sender_name,
+            post_id=post_id,
+            status=status,
+            error=error[:2000] if error else None,
+            raw_text=raw_text,
+            created_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        self.session.add(record)
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            existing = self.get_imported_feishu_message(message_id)
+            if existing is not None:
+                return existing
+            raise
+        return record
 
     def ensure_tag(self, name: str, color: str = "#2f75d6", is_public: bool = True) -> TagModel:
         name = name.strip()

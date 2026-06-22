@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     feishu_admin_open_ids: list[str] = []
     feishu_admin_department_ids: list[str] = []
     feishu_admin_group_ids: list[str] = []
+    feishu_import_chat_ids: list[str] = []
+    feishu_import_interval_seconds: float = 60
+    feishu_import_batch_size: int = 50
+    feishu_import_default_tags: list[str] = ["飞书导入"]
+    feishu_import_min_text_chars: int = 20
+    feishu_import_duplicate_threshold: float = 0.72
     auth_cookie_name: str = "featurevote_session"
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"
@@ -124,6 +130,8 @@ class Settings(BaseSettings):
         "feishu_admin_open_ids",
         "feishu_admin_department_ids",
         "feishu_admin_group_ids",
+        "feishu_import_chat_ids",
+        "feishu_import_default_tags",
         mode="before",
     )
     @classmethod

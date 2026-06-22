@@ -218,3 +218,24 @@ class NotificationTaskModel(Base):
     post: Mapped[PostModel | None] = relationship()
     task: Mapped[TaskModel | None] = relationship()
     user: Mapped[UserModel] = relationship()
+
+
+class FeishuImportedMessageModel(Base):
+    __tablename__ = "feishu_imported_messages"
+    __table_args__ = (UniqueConstraint("message_id", name="uq_feishu_imported_messages_message"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    chat_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    sender_open_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sender_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    post_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship()
+    post: Mapped[PostModel | None] = relationship()

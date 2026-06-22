@@ -5,6 +5,7 @@ import uvicorn
 from app import models  # noqa: F401
 from app.api.routes.ai import router as ai_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.feishu_import import router as feishu_import_router
 from app.api.routes.posts import router as posts_router, tags_router
 from app.api.routes.tasks import attachments_router
 from app.api.routes.tasks import assets_router as task_assets_router
@@ -31,6 +32,7 @@ app.include_router(posts_router, prefix=settings.api_prefix)
 app.include_router(tags_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
+app.include_router(feishu_import_router, prefix=settings.api_prefix)
 app.include_router(tasks_router, prefix=settings.api_prefix)
 app.include_router(task_labels_router, prefix=settings.api_prefix)
 app.include_router(task_assets_router, prefix=settings.api_prefix)

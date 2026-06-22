@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib import error, parse, request
 
@@ -21,6 +22,17 @@ class FeishuProfile:
     avatar_url: str | None
     department_ids: list[str]
     group_ids: list[str]
+
+
+@dataclass(frozen=True)
+class FeishuChatMessage:
+    message_id: str
+    chat_id: str
+    sender_open_id: str
+    sender_name: str | None
+    sender_type: str | None
+    text: str
+    sent_at: datetime | None
 
 
 class FeishuClient:
@@ -106,6 +118,37 @@ class FeishuClient:
         }
         self._post_json(url, payload, bearer_token=token)
 
+    def list_chat_text_messages(
+        self,
+        chat_id: str,
+        *,
+        page_size: int = 50,
+        page_token: str | None = None,
+    ) -> tuple[list[FeishuChatMessage], str | None]:
+        token = self.get_tenant_access_token()
+        params: dict[str, str | int] = {
+            "container_id_type": "chat",
+            "container_id": chat_id,
+            "page_size": max(1, min(page_size, 50)),
+        }
+        if page_token:
+            params["page_token"] = page_token
+        url = f"{self.message_url}?{parse.urlencode(params)}"
+        data = self._get_json(url, token)
+        source = data.get("data") if isinstance(data.get("data"), dict) else {}
+        raw_items = source.get("items") if isinstance(source, dict) else []
+        if not isinstance(raw_items, list):
+            raw_items = []
+        messages = [
+            message
+            for item in raw_items
+            if isinstance(item, dict)
+            for message in [_parse_chat_message(item, chat_id)]
+            if message is not None
+        ]
+        next_token = source.get("page_token") if isinstance(source, dict) else None
+        return messages, next_token if isinstance(next_token, str) and next_token else None
+
     def _post_json(self, url: str, payload: dict[str, Any], bearer_token: str | None = None) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -161,3 +204,58 @@ def _read_error_body(exc: error.HTTPError) -> str:
     except Exception:  # noqa: BLE001 - best effort diagnostic detail.
         return ""
     return body[:500]
+
+
+def _parse_chat_message(item: dict[str, Any], chat_id: str) -> FeishuChatMessage | None:
+    if item.get("msg_type") != "text":
+        return None
+
+    message_id = _first_str(item, "message_id")
+    if not message_id:
+        return None
+
+    sender = item.get("sender") if isinstance(item.get("sender"), dict) else {}
+    sender_id = sender.get("sender_id") if isinstance(sender.get("sender_id"), dict) else {}
+    sender_open_id = _first_str(sender_id, "open_id")
+    if not sender_open_id:
+        return None
+
+    text = _extract_text_content(item.get("body"))
+    if not text:
+        return None
+
+    return FeishuChatMessage(
+        message_id=message_id,
+        chat_id=_first_str(item, "chat_id") or chat_id,
+        sender_open_id=sender_open_id,
+        sender_name=_first_str(sender, "sender_name"),
+        sender_type=_first_str(sender_id, "sender_type", "id_type"),
+        text=text,
+        sent_at=_parse_millis_datetime(_first_str(item, "create_time", "update_time")),
+    )
+
+
+def _extract_text_content(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    content = body.get("content")
+    if not isinstance(content, str):
+        return ""
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return content.strip()
+    if not isinstance(parsed, dict):
+        return ""
+    text = parsed.get("text")
+    return text.strip() if isinstance(text, str) else ""
+
+
+def _parse_millis_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        timestamp = int(value)
+    except ValueError:
+        return None
+    return datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
