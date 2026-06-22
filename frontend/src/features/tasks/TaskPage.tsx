@@ -38,6 +38,8 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   async function loadTasks() {
     const data = await fetchTasks({ query, status, assigneeId, label });
     setTasks(data.items);
+    setLabels((current) => mergeTaskLabels(current, data.items));
+    setAssignees((current) => mergeTaskAssignees(current, data.items));
     setSelectedTask((current) => {
       const targetId = new URLSearchParams(window.location.search).get("task");
       if (targetId) {
@@ -48,9 +50,16 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   }
 
   async function loadMeta() {
-    const [labelData, assigneeData] = await Promise.all([fetchTaskLabels(), fetchTaskAssignees()]);
-    setLabels(labelData.items);
-    setAssignees(assigneeData.items);
+    const [labelResult, assigneeResult] = await Promise.allSettled([fetchTaskLabels(), fetchTaskAssignees()]);
+    if (labelResult.status === "fulfilled") {
+      setLabels(labelResult.value.items);
+    }
+    if (assigneeResult.status === "fulfilled") {
+      setAssignees(assigneeResult.value.items);
+    }
+    if (labelResult.status === "rejected" && assigneeResult.status === "rejected") {
+      throw labelResult.reason instanceof Error ? labelResult.reason : new Error("任务元数据加载失败。");
+    }
   }
 
   useEffect(() => {
@@ -208,5 +217,25 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       ) : null}
     </section>
   );
+}
+
+function mergeTaskLabels(current: TaskLabel[], tasks: TaskItem[]) {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const task of tasks) {
+    for (const label of task.labels) {
+      byId.set(label.id, label);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+function mergeTaskAssignees(current: CurrentUser[], tasks: TaskItem[]) {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const task of tasks) {
+    if (task.assignee) {
+      byId.set(task.assignee.id, task.assignee);
+    }
+  }
+  return Array.from(byId.values());
 }
 

@@ -87,6 +87,9 @@ class TasksService:
     async def list_labels(self) -> TaskLabelListResponse:
         return TaskLabelListResponse(items=self.repository.list_labels())
 
+    async def list_assignees(self) -> TaskAssigneeListResponse:
+        return TaskAssigneeListResponse(items=self.repository.list_assignees())
+
     async def create_label(self, payload: TaskLabelCreate) -> TaskLabelListResponse:
         self.repository.create_label(payload)
         return TaskLabelListResponse(items=self.repository.list_labels())

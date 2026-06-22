@@ -52,7 +52,7 @@ export function LabelPicker({
                   onDelete(label);
                 }}
               >
-                ?
+                x
               </button>
             ) : null}
           </div>

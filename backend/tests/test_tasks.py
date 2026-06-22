@@ -90,6 +90,17 @@ def test_create_task_rejects_missing_assignee() -> None:
         raise AssertionError("Expected missing assignee to be rejected.")
 
 
+def test_service_lists_task_assignees() -> None:
+    session = make_session()
+    _add_user(session, "admin", "ou_admin", role="admin")
+    _add_user(session, "dev", "ou_dev")
+    service = TasksService(TasksRepository(session))
+
+    response = _run(service.list_assignees())
+
+    assert [item.id for item in response.items] == ["admin", "dev"]
+
+
 def test_create_label_is_idempotent_by_slug() -> None:
     session = make_session()
     repo = TasksRepository(session)
