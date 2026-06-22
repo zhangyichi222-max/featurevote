@@ -215,8 +215,7 @@ def _parse_chat_message(item: dict[str, Any], chat_id: str) -> FeishuChatMessage
         return None
 
     sender = item.get("sender") if isinstance(item.get("sender"), dict) else {}
-    sender_id = sender.get("sender_id") if isinstance(sender.get("sender_id"), dict) else {}
-    sender_open_id = _first_str(sender_id, "open_id")
+    sender_open_id = _first_str(sender, "id")
     if not sender_open_id:
         return None
 
@@ -229,7 +228,7 @@ def _parse_chat_message(item: dict[str, Any], chat_id: str) -> FeishuChatMessage
         chat_id=_first_str(item, "chat_id") or chat_id,
         sender_open_id=sender_open_id,
         sender_name=_first_str(sender, "sender_name"),
-        sender_type=_first_str(sender_id, "sender_type", "id_type"),
+        sender_type=_first_str(sender, "sender_type"),
         text=text,
         sent_at=_parse_millis_datetime(_first_str(item, "create_time", "update_time")),
     )

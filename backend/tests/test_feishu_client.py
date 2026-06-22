@@ -38,7 +38,7 @@ def test_feishu_url_error_includes_reason(monkeypatch: pytest.MonkeyPatch) -> No
     assert "timed out" in str(exc.value)
 
 
-def test_list_chat_text_messages_parses_text_and_next_page(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FeishuClient()
     monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")
 
@@ -56,15 +56,17 @@ def test_list_chat_text_messages_parses_text_and_next_page(monkeypatch: pytest.M
                         "msg_type": "text",
                         "create_time": "1710000000000",
                         "sender": {
-                            "sender_name": "Alice",
-                            "sender_id": {"open_id": "ou_alice", "sender_type": "user"},
+                            "id": "ou_alice",
+                            "id_type": "open_id",
+                            "sender_type": "user",
+                            "tenant_key": "tenant_key",
                         },
-                        "body": {"content": '{"text":"希望支持按部门导出投票结果"}'},
+                        "body": {"content": '{"text":"Need department export for vote results."}'},
                     },
                     {
                         "message_id": "om_2",
                         "msg_type": "image",
-                        "sender": {"sender_id": {"open_id": "ou_alice"}},
+                        "sender": {"id": "ou_alice", "id_type": "open_id", "sender_type": "user"},
                         "body": {"content": "{}"},
                     },
                 ],
@@ -79,8 +81,9 @@ def test_list_chat_text_messages_parses_text_and_next_page(monkeypatch: pytest.M
     assert len(messages) == 1
     assert messages[0].message_id == "om_1"
     assert messages[0].sender_open_id == "ou_alice"
-    assert messages[0].sender_name == "Alice"
-    assert messages[0].text == "希望支持按部门导出投票结果"
+    assert messages[0].sender_name is None
+    assert messages[0].sender_type == "user"
+    assert messages[0].text == "Need department export for vote results."
 
 
 class _Body:
