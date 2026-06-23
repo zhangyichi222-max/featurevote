@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from scripts import process_notifications
 
@@ -39,6 +40,33 @@ def test_watch_processes_then_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
         process_notifications.watch(3)
 
     assert processed == ["processed"]
+
+
+def test_watch_continues_after_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = []
+
+    def fake_process_once() -> int:
+        calls.append("process")
+        if len(calls) == 1:
+            raise OperationalError("SELECT 1", {}, Exception("lost connection"))
+        return 0
+
+    def fake_sleep(interval: float) -> None:
+        assert interval == 3
+        if len(calls) >= 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(process_notifications, "process_once", fake_process_once)
+    monkeypatch.setattr(process_notifications.time, "sleep", fake_sleep)
+
+    with pytest.raises(KeyboardInterrupt):
+        process_notifications.watch(3)
+
+    assert calls == ["process", "process"]
+    assert "Notification polling database error:" in capsys.readouterr().out
 
 
 def test_process_once_is_quiet_when_no_tasks(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

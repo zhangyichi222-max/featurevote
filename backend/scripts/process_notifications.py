@@ -3,6 +3,8 @@ import argparse
 import sys
 import time
 
+from sqlalchemy.exc import OperationalError
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.session import SessionLocal
@@ -20,7 +22,10 @@ def process_once() -> int:
 def watch(interval: float) -> None:
     print(f"Watching notification tasks every {interval:g} second(s).", flush=True)
     while True:
-        process_once()
+        try:
+            process_once()
+        except OperationalError as exc:
+            print(f"Notification polling database error: {exc}", flush=True)
         time.sleep(interval)
 
 
