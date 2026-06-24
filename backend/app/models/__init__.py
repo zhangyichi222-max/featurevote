@@ -1,5 +1,4 @@
 from app.models.post import (
-    CommentModel,
     FeishuImportedMessageModel,
     NotificationTaskModel,
     PostModel,
@@ -14,7 +13,6 @@ from app.models.post import (
 )
 
 __all__ = [
-    "CommentModel",
     "FeishuImportedMessageModel",
     "NotificationTaskModel",
     "PostModel",

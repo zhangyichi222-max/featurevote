@@ -47,7 +47,6 @@ class UserModel(Base):
 
     tenant: Mapped[TenantModel] = relationship(back_populates="users")
     posts: Mapped[list["PostModel"]] = relationship(back_populates="user", foreign_keys="PostModel.user_id")
-    comments: Mapped[list["CommentModel"]] = relationship(back_populates="user")
 
 
 class PostTagModel(Base):
@@ -93,7 +92,6 @@ class PostModel(Base):
     duplicate_of_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id"), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(nullable=True)
     archived_by_user_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("users.id"), nullable=True)
-    hot_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 
@@ -101,7 +99,6 @@ class PostModel(Base):
     user: Mapped[UserModel] = relationship(back_populates="posts", foreign_keys=[user_id])
     tags: Mapped[list[TagModel]] = relationship(secondary="post_tags", back_populates="posts")
     votes: Mapped[list["VoteModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
-    comments: Mapped[list["CommentModel"]] = relationship(back_populates="post", cascade="all, delete-orphan")
     response: Mapped["PostResponseModel | None"] = relationship(
         back_populates="post",
         cascade="all, delete-orphan",
@@ -123,20 +120,6 @@ class VoteModel(Base):
 
     post: Mapped[PostModel] = relationship(back_populates="votes")
     user: Mapped[UserModel] = relationship()
-
-
-class CommentModel(Base):
-    __tablename__ = "comments"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
-
-    post: Mapped[PostModel] = relationship(back_populates="comments")
-    user: Mapped[UserModel] = relationship(back_populates="comments")
 
 
 class PostResponseModel(Base):

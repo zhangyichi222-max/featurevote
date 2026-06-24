@@ -52,7 +52,6 @@ class PostItem(BaseModel):
     status: PostStatus
     is_approved: bool
     votes_count: int
-    comments_count: int
     has_voted: bool
     user: UserItem
     tags: list[TagItem]
@@ -75,23 +74,6 @@ class PostCreate(BaseModel):
 
 class VoteCreate(BaseModel):
     pass
-
-
-class CommentCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=5000)
-
-
-class CommentItem(BaseModel):
-    id: str
-    post_id: str
-    author: UserItem
-    body: str
-    is_approved: bool
-    created_at: datetime
-
-
-class CommentListResponse(BaseModel):
-    items: list[CommentItem]
 
 
 class TagCreate(BaseModel):

@@ -1,6 +1,5 @@
 import { apiClient } from "../../api/client";
 import type {
-  CommentListResponse,
   CurrentUser,
   RequirementListResponse,
   RequirementStatus,
@@ -18,7 +17,6 @@ type PostItem = {
   status: PostStatus;
   is_approved: boolean;
   votes_count: number;
-  comments_count: number;
   has_voted?: boolean;
   user: { name: string; id: string };
   tags: Array<{ id: string; slug: string; name: string; color: string }>;
@@ -35,18 +33,6 @@ type CurrentUserResponse = {
 
 type PostListResponse = {
   items: PostItem[];
-};
-
-type PostCommentItem = {
-  id: string;
-  post_id: string;
-  author: { name: string };
-  body: string;
-  created_at: string;
-};
-
-type PostCommentListResponse = {
-  items: PostCommentItem[];
 };
 
 const statusToPostStatus: Record<RequirementStatus, PostStatus> = {
@@ -157,33 +143,6 @@ export async function convertRequirementToTask(
     {
       ...payload,
       status: "todo",
-    },
-  );
-}
-
-export async function fetchComments(requirementId: string) {
-  const data = await apiClient.get<PostCommentListResponse>(`/posts/${requirementId}/comments`);
-  return {
-    items: data.items.map((item) => ({
-      id: item.id,
-      requirement_id: item.post_id,
-      author_name: item.author.name,
-      body: item.body,
-      created_at: item.created_at,
-    })),
-  } satisfies CommentListResponse;
-}
-
-export async function createComment(
-  requirementId: string,
-  payload: {
-    body: string;
-  },
-) {
-  return apiClient.post<{ success: boolean; message: string }>(
-    `/posts/${requirementId}/comments`,
-    {
-      body: payload.body,
     },
   );
 }

@@ -4,8 +4,6 @@ from app.api.deps import get_posts_service, get_tasks_service, require_admin_use
 from app.models.post import UserModel
 from app.schemas.post import (
     ActionResult,
-    CommentCreate,
-    CommentListResponse,
     DuplicateUpdate,
     ModerationUpdate,
     PostCreate,
@@ -59,21 +57,6 @@ async def vote_post(
     user: UserModel = Depends(require_current_user),
 ) -> ActionResult:
     return await service.vote_post(post_id, user)
-
-
-@router.get("/{post_id}/comments", response_model=CommentListResponse)
-async def list_comments(post_id: str, service: PostsService = Depends(get_posts_service)) -> CommentListResponse:
-    return await service.list_comments(post_id)
-
-
-@router.post("/{post_id}/comments", response_model=ActionResult, dependencies=[Depends(require_mutating_origin)])
-async def create_comment(
-    post_id: str,
-    payload: CommentCreate,
-    service: PostsService = Depends(get_posts_service),
-    user: UserModel = Depends(require_current_user),
-) -> ActionResult:
-    return await service.create_comment(post_id, payload, user)
 
 
 @router.post("/{post_id}/response", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])

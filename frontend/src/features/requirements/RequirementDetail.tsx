@@ -1,44 +1,27 @@
-import { FormEvent, useState } from "react";
-
 import { RichContentPreview } from "../rich-content/RichContentEditor";
-import type { CommentItem, Requirement, RequirementStatus } from "../../types/requirement";
+import type { Requirement, RequirementStatus } from "../../types/requirement";
 import { statusMeta, statusOrder } from "./constants";
-import { formatDate } from "./utils";
 import { StatusLozenge } from "./StatusLozenge";
 
 export function RequirementDetail({
   item,
-  comments,
   isBusy,
   onClose,
   onVote,
   onStatusChange,
   onArchive,
   onOpenTask,
-  onComment,
-  canWrite,
   isAdmin,
 }: {
   item: Requirement;
-  comments: CommentItem[];
   isBusy: boolean;
   onClose: () => void;
   onVote: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   onOpenTask: (taskId: string) => void;
-  onComment: (id: string, payload: { body: string }) => Promise<void>;
-  canWrite: boolean;
   isAdmin: boolean;
 }) {
-  const [body, setBody] = useState("");
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    await onComment(item.id, { body });
-    setBody("");
-  }
-
   return (
     <div className="detail-backdrop" role="presentation">
       <section className="detail-panel" aria-label="建议详情">
@@ -79,35 +62,6 @@ export function RequirementDetail({
               <p>{statusMeta[item.status].response}</p>
             </section>
 
-            <section className="comments-section">
-              <h3>讨论</h3>
-              <div className="comment-list">
-                {comments.map((comment) => (
-                  <article key={comment.id} className="comment-item">
-                    <strong>{comment.author_name}</strong>
-                    <span>{formatDate(comment.created_at)}</span>
-                    <p>{comment.body}</p>
-                  </article>
-                ))}
-                {!comments.length ? <p className="comment-empty">还没有评论，来开始讨论吧。</p> : null}
-              </div>
-              {canWrite ? (
-                <form className="comment-form" onSubmit={handleSubmit}>
-                  <textarea
-                    value={body}
-                    onChange={(event) => setBody(event.target.value)}
-                    placeholder="添加评论"
-                    rows={4}
-                    required
-                  />
-                  <button className="primary-button" type="submit" disabled={isBusy}>
-                    {isBusy ? "发布中..." : "发布评论"}
-                  </button>
-                </form>
-              ) : (
-                <p className="comment-empty">通过飞书登录后参与讨论。</p>
-              )}
-            </section>
           </article>
 
           <aside className="detail-sidebar">
@@ -142,5 +96,4 @@ export function RequirementDetail({
     </div>
   );
 }
-
 

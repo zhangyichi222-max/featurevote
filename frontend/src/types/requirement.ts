@@ -55,15 +55,3 @@ export interface SimilarRequirementsResponse {
   items: SimilarRequirement[];
   ai_enhanced: boolean;
 }
-
-export interface CommentItem {
-  id: string;
-  requirement_id: string;
-  author_name: string;
-  body: string;
-  created_at: string;
-}
-
-export interface CommentListResponse {
-  items: CommentItem[];
-}

@@ -5,7 +5,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models.post import NotificationTaskModel, UserModel
-from app.repositories.posts import DEFAULT_TENANT_ID, HOT_VOTE_THRESHOLD, PostsRepository, seed_default_data
+from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository, seed_default_data
 from app.schemas.post import DuplicateUpdate, PostCreate, StatusResponseUpdate
 from app.services.notifications import NotificationProcessor
 
@@ -49,20 +49,21 @@ def test_duplicate_status_transition_dedupe_does_not_fail_update() -> None:
     assert len(tasks) == 1
 
 
-def test_hot_notification_enqueues_once_at_threshold() -> None:
+def test_votes_above_previous_threshold_only_record_votes() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
-    post = PostsRepository(session).create_post(PostCreate(title="Need charts", description="Charts help", tags=[]), creator)
+    repo = PostsRepository(session)
+    post = repo.create_post(PostCreate(title="Need charts", description="Charts help", tags=[]), creator)
 
-    for index in range(HOT_VOTE_THRESHOLD + 1):
+    for index in range(11):
         voter = _add_user(session, f"voter-{index}", f"ou_voter_{index}")
-        PostsRepository(session).create_vote(post.id, voter)
+        repo.create_vote(post.id, voter)
 
     tasks = session.scalars(select(NotificationTaskModel).where(NotificationTaskModel.event_type == "hot")).all()
-    refreshed = PostsRepository(session).get_active_post_model(post.id)
-    assert refreshed.hot_at is not None
-    assert len(tasks) == 1
-    assert f"当前票数：{HOT_VOTE_THRESHOLD}" in tasks[0].message
+    refreshed = repo.get_post(post.id)
+    assert refreshed is not None
+    assert refreshed.votes_count == 11
+    assert tasks == []
 
 
 def test_completed_and_declined_notifications_use_product_status_labels() -> None:

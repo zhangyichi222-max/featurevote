@@ -20,8 +20,6 @@ The backend exposes a Fider-like product core under `/api/v1`:
 - `POST /posts` - create a post
 - `GET /posts/{post_id}` - fetch post detail
 - `POST /posts/{post_id}/vote` - vote with duplicate-vote protection
-- `GET /posts/{post_id}/comments` - list comments
-- `POST /posts/{post_id}/comments` - create a comment
 - `POST /posts/{post_id}/response` - set status and staff response
 - `POST /posts/{post_id}/duplicate` - mark a post as duplicate
 - `POST /posts/{post_id}/moderation` - approve or reject a post
@@ -74,7 +72,7 @@ cd backend
 python -m alembic upgrade head
 ```
 
-Requirement status changes and first reaching 10 votes enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
+Requirement status changes and task events enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
 
 ```bash
 cd backend

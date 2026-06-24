@@ -5,8 +5,6 @@ from app.repositories.posts import PostsRepository
 from app.models.post import UserModel
 from app.schemas.post import (
     ActionResult,
-    CommentCreate,
-    CommentListResponse,
     DuplicateUpdate,
     ModerationUpdate,
     PostCreate,
@@ -60,15 +58,6 @@ class PostsService:
                 detail="You have already voted for this post.",
             ) from exc
         return ActionResult(message="Vote submitted successfully.")
-
-    async def list_comments(self, post_id: str) -> CommentListResponse:
-        await self.get_post(post_id)
-        return CommentListResponse(items=self.repository.list_comments(post_id))
-
-    async def create_comment(self, post_id: str, payload: CommentCreate, user: UserModel) -> ActionResult:
-        await self.get_post(post_id)
-        self.repository.create_comment(post_id, payload, user)
-        return ActionResult(message="Comment added successfully.")
 
     async def list_tags(self) -> TagListResponse:
         return TagListResponse(items=self.repository.list_tags())

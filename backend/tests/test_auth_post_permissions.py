@@ -71,6 +71,7 @@ def client() -> Generator[TestClient, None, None]:
 def test_anonymous_can_read_but_cannot_write(client: TestClient) -> None:
     response = client.get("/api/v1/posts")
     assert response.status_code == 200
+    assert all("comments_count" not in item for item in response.json()["items"])
 
     response = client.post(
         "/api/v1/posts",
@@ -102,7 +103,7 @@ def test_user_can_write_but_not_admin_actions(client: TestClient) -> None:
 
     created = client.post(
         "/api/v1/posts",
-        json={"title": "Need comments", "description": "Discussion should work", "tags": []},
+        json={"title": "Need export", "description": "Export should work", "tags": []},
         cookies=cookies,
         headers=headers,
     )
@@ -112,14 +113,6 @@ def test_user_can_write_but_not_admin_actions(client: TestClient) -> None:
 
     voted = client.post(f"/api/v1/posts/{post_id}/vote", json={}, cookies=cookies, headers=headers)
     assert voted.status_code == 200
-
-    commented = client.post(
-        f"/api/v1/posts/{post_id}/comments",
-        json={"body": "I agree"},
-        cookies=cookies,
-        headers=headers,
-    )
-    assert commented.status_code == 200
 
     denied = client.post(
         f"/api/v1/posts/{post_id}/response",
@@ -131,11 +124,16 @@ def test_user_can_write_but_not_admin_actions(client: TestClient) -> None:
 
     convert_denied = client.post(
         f"/api/v1/posts/{post_id}/convert-to-task",
-        json={"title": "Need comments", "description_markdown": "Work item", "labels": ["需求转入"]},
+        json={"title": "Need export", "description_markdown": "Work item", "labels": ["需求转入"]},
         cookies=cookies,
         headers=headers,
     )
     assert convert_denied.status_code == 403
+
+
+def test_comment_routes_are_not_available(client: TestClient) -> None:
+    assert client.get("/api/v1/posts/missing/comments").status_code == 404
+    assert client.post("/api/v1/posts/missing/comments", json={"body": "No longer supported"}).status_code == 404
 
 
 def test_admin_can_convert_post_to_task(client: TestClient) -> None:

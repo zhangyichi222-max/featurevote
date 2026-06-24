@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import (
-    CommentModel,
     FeishuImportedMessageModel,
     NotificationTaskModel,
     PostModel,
@@ -17,8 +16,6 @@ from app.models.post import (
     VoteModel,
 )
 from app.schemas.post import (
-    CommentCreate,
-    CommentItem,
     DuplicateUpdate,
     ModerationUpdate,
     PostCreate,
@@ -30,7 +27,6 @@ from app.schemas.post import (
 )
 
 DEFAULT_TENANT_ID = "defaulttenant000000000000000000"
-HOT_VOTE_THRESHOLD = 10
 NOTIFICATION_MAX_ATTEMPTS = 3
 NOTIFY_STATUS_VALUES = {"planned", "in_progress", "completed", "declined", "done", "rejected"}
 NOTIFICATION_STATUS_LABELS = {"completed": "done", "declined": "rejected"}
@@ -117,7 +113,7 @@ class PostsRepository:
         posts = self.session.scalars(statement).unique().all()
         result = [self._to_post_item(post) for post in posts]
         if view == "trending":
-            return sorted(result, key=lambda item: (item.votes_count, item.comments_count, item.updated_at), reverse=True)
+            return sorted(result, key=lambda item: (item.votes_count, item.updated_at), reverse=True)
         return result
 
     def get_post(self, post_id: str) -> PostItem | None:
@@ -161,45 +157,13 @@ class PostsRepository:
         return self.get_post(post.id)
 
     def create_vote(self, post_id: str, user: UserModel) -> None:
-        post = self.get_active_post_model(post_id)
         vote = VoteModel(id=uuid4().hex, post_id=post_id, user_id=user.id, created_at=_utc_now())
         self.session.add(vote)
         try:
-            self.session.flush()
-            votes_count = int(
-                self.session.scalar(select(func.count(VoteModel.id)).where(VoteModel.post_id == post_id)) or 0
-            )
-            if post is not None and post.hot_at is None and votes_count >= HOT_VOTE_THRESHOLD:
-                post.hot_at = _utc_now()
-                post.updated_at = _utc_now()
-                self._enqueue_hot_notification(post, votes_count)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
             raise
-
-    def list_comments(self, post_id: str) -> list[CommentItem]:
-        records = self.session.scalars(
-            select(CommentModel)
-            .options(selectinload(CommentModel.user))
-            .where(CommentModel.post_id == post_id)
-            .order_by(CommentModel.created_at.asc())
-        ).all()
-        return [self._to_comment_item(record) for record in records]
-
-    def create_comment(self, post_id: str, payload: CommentCreate, user: UserModel) -> CommentItem:
-        comment = CommentModel(
-            id=uuid4().hex,
-            post_id=post_id,
-            user_id=user.id,
-            body=payload.body,
-            is_approved=True,
-            created_at=_utc_now(),
-        )
-        self.session.add(comment)
-        self.session.commit()
-        self.session.refresh(comment)
-        return self._to_comment_item(comment)
 
     def list_tags(self) -> list[TagItem]:
         tags = self.session.scalars(
@@ -432,7 +396,6 @@ class PostsRepository:
             selectinload(PostModel.user),
             selectinload(PostModel.tags),
             selectinload(PostModel.votes),
-            selectinload(PostModel.comments),
             selectinload(PostModel.response).selectinload(PostResponseModel.user),
             selectinload(PostModel.duplicate_of),
             selectinload(PostModel.linked_task),
@@ -477,7 +440,6 @@ class PostsRepository:
             status=post.status,
             is_approved=post.is_approved,
             votes_count=len(post.votes),
-            comments_count=len([comment for comment in post.comments if comment.is_approved]),
             has_voted=False,
             user=self._to_user_item(post.user),
             tags=[self._to_tag_item(tag) for tag in post.tags],
@@ -486,16 +448,6 @@ class PostsRepository:
             linked_task=self._to_linked_task_item(post.linked_task) if post.linked_task and post.linked_task.archived_at is None else None,
             created_at=post.created_at,
             updated_at=post.updated_at,
-        )
-
-    def _to_comment_item(self, comment: CommentModel) -> CommentItem:
-        return CommentItem(
-            id=comment.id,
-            post_id=comment.post_id,
-            author=self._to_user_item(comment.user),
-            body=comment.body,
-            is_approved=comment.is_approved,
-            created_at=comment.created_at,
         )
 
     def _to_tag_item(self, tag: TagModel) -> TagItem:
@@ -529,22 +481,6 @@ class PostsRepository:
             post=post,
             event_type="status_changed",
             dedupe_key=f"status:{previous_status}:{new_status}",
-            message=message,
-        )
-
-    def _enqueue_hot_notification(self, post: PostModel, votes_count: int) -> None:
-        message = "\n".join(
-            [
-                "需求已变热门",
-                f"标题：{post.title}",
-                f"当前票数：{votes_count}",
-                f"热门阈值：{HOT_VOTE_THRESHOLD}",
-            ]
-        )
-        self._enqueue_notification(
-            post=post,
-            event_type="hot",
-            dedupe_key=f"hot:{HOT_VOTE_THRESHOLD}",
             message=message,
         )
 
