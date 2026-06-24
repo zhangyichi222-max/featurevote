@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -15,7 +16,7 @@ from app.models.post import FeishuImportedMessageModel, PostModel, UserModel, Vo
 from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository, seed_default_data
 from app.schemas.ai import FeishuRequirementDraft, SuggestionDraftResponse
 from app.schemas.post import PostCreate
-from app.services.feishu_import import FeishuRequirementImportService
+from app.services.feishu_import import FeishuRequirementImportService, _content_preview
 
 
 def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,6 +224,45 @@ def test_grouped_import_skips_low_confidence_draft(monkeypatch: pytest.MonkeyPat
     assert record.status == "skipped"
 
 
+def test_debug_logs_are_concise_and_hide_internal_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    monkeypatch.setattr(settings, "feishu_import_debug_logging", True)
+    message = _message(
+        "om_secret_message_id",
+        sender_open_id="ou_secret_open_id",
+        text="希望支持按部门导出投票结果，方便团队复盘和确认后续优先级。",
+        sent_at=datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc),
+    )
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=GroupedDeepSeekClient([]),
+    )
+
+    with caplog.at_level(logging.INFO, logger="app.services.feishu_import"):
+        stats = asyncio.run(service.import_configured_chats())
+
+    output = caplog.text
+    assert stats.skipped == 1
+    assert "已读取 1 条消息" in output
+    assert "正在分析第 1/1 组，共 1 条消息" in output
+    assert "DeepSeek 分析完成：未识别到需求" in output
+    assert "om_secret_message_id" not in output
+    assert "ou_secret_open_id" not in output
+
+
+def test_content_preview_flattens_and_truncates_long_text() -> None:
+    preview = _content_preview("第一行\n第二行  " + ("很长的内容" * 40), max_chars=24)
+
+    assert "\n" not in preview
+    assert len(preview) == 25
+    assert preview.endswith("…")
+
+
 class FakeFeishuClient:
     def __init__(self, messages: Sequence[FeishuChatMessage]) -> None:
         self.messages = list(messages)
@@ -283,6 +323,7 @@ def _configure(monkeypatch: pytest.MonkeyPatch, *, chat_ids: list[str], grouping
     monkeypatch.setattr(settings, "feishu_import_window_minutes", 60)
     monkeypatch.setattr(settings, "feishu_import_min_confidence", 0.65)
     monkeypatch.setattr(settings, "feishu_import_max_messages_per_summary", 50)
+    monkeypatch.setattr(settings, "feishu_import_debug_logging", False)
 
 
 def _message(

@@ -1,4 +1,5 @@
 import pytest
+import logging
 from fastapi import HTTPException
 
 from app.clients.deepseek import (
@@ -7,6 +8,8 @@ from app.clients.deepseek import (
     _parse_feishu_requirement_drafts,
     _parse_suggestion_draft,
 )
+from app.clients.feishu import FeishuChatMessage
+from app.core.config import settings
 
 
 def test_parse_suggestion_draft_accepts_json_content() -> None:
@@ -120,6 +123,42 @@ async def test_deepseek_chat_maps_non_object_success_to_clear_error(monkeypatch:
         )
 
     assert exc.value.status_code == 502
+
+
+@pytest.mark.anyio
+async def test_feishu_parse_failure_logs_truncated_raw_response(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = DeepSeekSuggestionClient()
+    raw_response = "无法解析的响应" + ("x" * 5000)
+
+    async def fake_chat(messages, *, service_name):
+        _ = messages, service_name
+        return raw_response
+
+    monkeypatch.setattr(settings, "deepseek_enabled", True)
+    monkeypatch.setattr(settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(settings, "feishu_import_debug_logging", True)
+    monkeypatch.setattr(settings, "feishu_import_debug_log_max_chars", 200)
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    message = FeishuChatMessage(
+        message_id="om_test",
+        chat_id="oc_test",
+        sender_open_id="ou_test",
+        sender_name="测试用户",
+        sender_type="user",
+        text="希望支持按部门导出投票结果。",
+        sent_at=None,
+    )
+
+    with caplog.at_level(logging.ERROR, logger="app.clients.deepseek"):
+        with pytest.raises(HTTPException):
+            await client.summarize_feishu_requirements([message])
+
+    assert "DeepSeek 响应解析失败，原始响应：无法解析的响应" in caplog.text
+    assert "truncated" in caplog.text
+    assert raw_response not in caplog.text
 
 
 class _FakeAsyncClient:

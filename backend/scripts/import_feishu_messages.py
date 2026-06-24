@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -13,9 +14,28 @@ from app.repositories.posts import PostsRepository
 from app.services.feishu_import import FeishuRequirementImportService
 
 
+BEIJING_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Shanghai")
+
+
+class BeijingTimeFormatter(logging.Formatter):
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        current = datetime.fromtimestamp(record.created, tz=BEIJING_TIMEZONE)
+        return current.strftime(datefmt or "%Y-%m-%d %H:%M:%S")
+
+
+def configure_utf8_output() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def configure_logging() -> None:
     level = logging.INFO if settings.feishu_import_debug_logging else logging.WARNING
-    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(BeijingTimeFormatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logging.basicConfig(level=level, handlers=[handler], force=True)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 async def import_once() -> int:
@@ -25,11 +45,9 @@ async def import_once() -> int:
         stats = await FeishuRequirementImportService(repository).import_configured_chats()
     total_actions = stats.created + stats.voted + stats.already_voted + stats.failed + stats.skipped
     print(
-        "Feishu import: "
-        f"fetched={stats.fetched}, skipped={stats.skipped}, created={stats.created}, "
-        f"voted={stats.voted}, already_voted={stats.already_voted}, failed={stats.failed}, "
-        f"windows_processed={stats.windows_processed}, generated_requirements={stats.generated_requirements}, "
-        f"grouped_messages={stats.grouped_messages}, low_confidence_skipped={stats.low_confidence_skipped}",
+        "导入完成："
+        f"读取 {stats.fetched}，跳过 {stats.skipped}，新增 {stats.created}，"
+        f"重复需求加票 {stats.voted}，已投过票 {stats.already_voted}，失败 {stats.failed}",
         flush=True,
     )
     return total_actions
@@ -40,7 +58,7 @@ def process_once() -> int:
 
 
 def watch(interval: float) -> None:
-    print(f"Watching Feishu chats every {interval:g} second(s).", flush=True)
+    print(f"开始监听飞书群，每 {interval:g} 秒检查一次。", flush=True)
     while True:
         process_once()
         time.sleep(interval)
@@ -60,6 +78,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    configure_utf8_output()
     configure_logging()
     args = parse_args()
     if args.interval <= 0:

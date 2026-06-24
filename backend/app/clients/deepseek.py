@@ -77,13 +77,6 @@ class DeepSeekSuggestionClient:
         window_text = _format_feishu_messages(messages)
         if len(window_text) > settings.deepseek_max_text_chars:
             window_text = window_text[: settings.deepseek_max_text_chars]
-        if settings.feishu_import_debug_logging:
-            logger.info(
-                "Feishu import AI window input: message_count=%s chars=%s content=%s",
-                len(messages),
-                len(window_text),
-                _truncate_debug_text(window_text),
-            )
 
         content = await self._chat(
             [
@@ -110,14 +103,12 @@ class DeepSeekSuggestionClient:
             ],
             service_name="Feishu requirement summarization",
         )
-        if settings.feishu_import_debug_logging:
-            logger.info(
-                "Feishu import AI raw response: message_count=%s chars=%s content=%s",
-                len(messages),
-                len(content),
-                _truncate_debug_text(content),
-            )
-        return _parse_feishu_requirement_drafts(content)
+        try:
+            return _parse_feishu_requirement_drafts(content)
+        except HTTPException:
+            if settings.feishu_import_debug_logging:
+                logger.error("DeepSeek 响应解析失败，原始响应：%s", _truncate_debug_text(content))
+            raise
 
     async def assess_similar_requirements(
         self,
@@ -186,7 +177,7 @@ class DeepSeekSuggestionClient:
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"{service_name} service is unavailable.",
+                detail=f"{service_name} 服务不可用。",
             ) from exc
 
         try:

@@ -1,4 +1,6 @@
 import pytest
+import logging
+from datetime import datetime, timezone
 
 from scripts import import_feishu_messages
 
@@ -63,9 +65,39 @@ def test_process_once_prints_stats(monkeypatch: pytest.MonkeyPatch, capsys: pyte
 
     assert import_feishu_messages.process_once() == 6
     output = capsys.readouterr().out
-    assert "fetched=6" in output
-    assert "created=1" in output
-    assert "failed=1" in output
+    assert "导入完成：读取 6" in output
+    assert "新增 1" in output
+    assert "失败 1" in output
+
+
+def test_beijing_formatter_converts_utc_time() -> None:
+    formatter = import_feishu_messages.BeijingTimeFormatter(
+        "%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    record = logging.LogRecord("test", logging.INFO, __file__, 1, "测试日志", (), None)
+    record.created = datetime(2026, 6, 24, 1, 54, 2, tzinfo=timezone.utc).timestamp()
+
+    assert formatter.format(record) == "2026-06-24 09:54:02 测试日志"
+
+
+def test_configure_utf8_output_reconfigures_supported_streams(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeStream:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def reconfigure(self, **kwargs) -> None:
+            self.calls.append(kwargs)
+
+    stdout = FakeStream()
+    stderr = FakeStream()
+    monkeypatch.setattr(import_feishu_messages.sys, "stdout", stdout)
+    monkeypatch.setattr(import_feishu_messages.sys, "stderr", stderr)
+
+    import_feishu_messages.configure_utf8_output()
+
+    assert stdout.calls == [{"encoding": "utf-8", "errors": "replace"}]
+    assert stderr.calls == [{"encoding": "utf-8", "errors": "replace"}]
 
 
 class _Stats:
