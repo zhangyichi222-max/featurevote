@@ -331,6 +331,19 @@ class PostsRepository:
             select(FeishuImportedMessageModel).where(FeishuImportedMessageModel.message_id == message_id)
         )
 
+    def get_imported_feishu_messages(
+        self,
+        message_ids: list[str],
+    ) -> dict[str, FeishuImportedMessageModel]:
+        if not message_ids:
+            return {}
+        records = self.session.scalars(
+            select(FeishuImportedMessageModel).where(
+                FeishuImportedMessageModel.message_id.in_(message_ids)
+            )
+        ).all()
+        return {record.message_id: record for record in records}
+
     def record_feishu_import(
         self,
         *,
@@ -343,6 +356,21 @@ class PostsRepository:
         post_id: str | None = None,
         error: str | None = None,
     ) -> FeishuImportedMessageModel:
+        existing = self.get_imported_feishu_message(message_id)
+        if existing is not None:
+            if existing.status != "failed":
+                return existing
+            existing.chat_id = chat_id
+            existing.sender_open_id = sender_open_id
+            existing.sender_name = sender_name
+            existing.raw_text = raw_text
+            existing.status = status
+            existing.post_id = post_id
+            existing.error = error[:2000] if error else None
+            existing.updated_at = _utc_now()
+            self.session.commit()
+            return existing
+
         record = FeishuImportedMessageModel(
             id=uuid4().hex,
             tenant_id=DEFAULT_TENANT_ID,
@@ -364,6 +392,16 @@ class PostsRepository:
             self.session.rollback()
             existing = self.get_imported_feishu_message(message_id)
             if existing is not None:
+                if existing.status == "failed":
+                    existing.chat_id = chat_id
+                    existing.sender_open_id = sender_open_id
+                    existing.sender_name = sender_name
+                    existing.raw_text = raw_text
+                    existing.status = status
+                    existing.post_id = post_id
+                    existing.error = error[:2000] if error else None
+                    existing.updated_at = _utc_now()
+                    self.session.commit()
                 return existing
             raise
         return record

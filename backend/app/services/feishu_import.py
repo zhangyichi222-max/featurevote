@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -46,22 +46,63 @@ class FeishuRequirementImportService:
         output = stats or FeishuImportRunResponse()
         before = _snapshot(output)
         page_token: str | None = None
-        remaining = max(1, settings.feishu_import_batch_size)
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=90)
+        page_size = max(1, min(settings.feishu_import_batch_size, 50))
+        page_number = 0
         fetched_messages: list[FeishuChatMessage] = []
-        while remaining > 0:
-            page_size = min(remaining, 50)
+        while True:
+            page_number += 1
             messages, page_token = self.feishu_client.list_chat_text_messages(
                 chat_id,
                 page_size=page_size,
                 page_token=page_token,
+                start_time=start_time,
+                end_time=end_time,
             )
-            output.add("fetched", len(messages))
-            fetched_messages.extend(messages)
-            remaining -= page_size
-            if not page_token:
+            reached_history_limit = any(
+                message.sent_at is not None and message.sent_at < start_time
+                for message in messages
+            )
+            messages = [
+                message
+                for message in messages
+                if message.sent_at is None or message.sent_at >= start_time
+            ]
+            imported = self.repository.get_imported_feishu_messages(
+                [message.message_id for message in messages]
+            )
+            already_processed = 0
+            retries = 0
+            actionable: list[FeishuChatMessage] = []
+            for message in messages:
+                record = imported.get(message.message_id)
+                if record is None:
+                    actionable.append(message)
+                elif record.status == "failed":
+                    actionable.append(message)
+                    retries += 1
+                else:
+                    already_processed += 1
+            output.add("fetched", len(actionable))
+            fetched_messages.extend(actionable)
+            if settings.feishu_import_debug_logging:
+                logger.info(
+                    "第 %s 页：文本消息 %s 条，已处理 %s 条，失败重试 %s 条，本次新增 %s 条",
+                    page_number,
+                    len(messages),
+                    already_processed,
+                    retries,
+                    len(actionable) - retries,
+                )
+            if reached_history_limit or not page_token:
                 break
         if settings.feishu_import_debug_logging:
-            logger.info("已读取 %s 条消息", len(fetched_messages))
+            logger.info(
+                "历史消息读取完成：共 %s 页，待处理 %s 条",
+                page_number,
+                len(fetched_messages),
+            )
         if settings.feishu_import_grouping_enabled:
             await self._process_messages_grouped(fetched_messages, output)
         else:
@@ -76,14 +117,8 @@ class FeishuRequirementImportService:
         stats: FeishuImportRunResponse,
     ) -> None:
         eligible: list[FeishuChatMessage] = []
-        duplicate_skipped = 0
         filtered_skipped = 0
         for message in messages:
-            if self.repository.get_imported_feishu_message(message.message_id) is not None:
-                stats.add("skipped")
-                duplicate_skipped += 1
-                continue
-
             cleaned_text = message.text.strip()
             if self._should_skip(message, cleaned_text):
                 self._record(message, "skipped", raw_text=cleaned_text)
@@ -95,8 +130,7 @@ class FeishuRequirementImportService:
         windows = _message_windows(eligible)
         if settings.feishu_import_debug_logging:
             logger.info(
-                "消息筛选完成：历史消息 %s 条，过滤 %s 条，待分析 %s 条，共 %s 组",
-                duplicate_skipped,
+                "消息筛选完成：过滤 %s 条，待分析 %s 条，共 %s 组",
                 filtered_skipped,
                 len(eligible),
                 len(windows),
@@ -193,10 +227,6 @@ class FeishuRequirementImportService:
             stats.add("skipped")
 
     async def _process_message(self, message: FeishuChatMessage, stats: FeishuImportRunResponse) -> None:
-        if self.repository.get_imported_feishu_message(message.message_id) is not None:
-            stats.add("skipped")
-            return
-
         cleaned_text = message.text.strip()
         if self._should_skip(message, cleaned_text):
             self._record(message, "skipped", raw_text=cleaned_text)

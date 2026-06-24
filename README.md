@@ -97,6 +97,8 @@ Configure one or more Feishu group chats for requirement import:
 ```env
 FEISHU_IMPORT_CHAT_IDS=oc_xxx,oc_yyy
 FEISHU_IMPORT_INTERVAL_SECONDS=60
+# Number of messages requested per Feishu API page (1-50). Import continues through
+# all pages within the most recent 90 days.
 FEISHU_IMPORT_BATCH_SIZE=50
 FEISHU_IMPORT_DEFAULT_TAGS=飞书导入
 FEISHU_IMPORT_MIN_TEXT_CHARS=20

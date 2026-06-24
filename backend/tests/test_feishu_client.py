@@ -1,4 +1,6 @@
 from urllib import error
+from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -66,8 +68,13 @@ def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytes
     monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")
 
     def fake_request(req):
-        assert "container_id=oc_test" in req.full_url
-        assert "page_size=20" in req.full_url
+        query = parse_qs(urlparse(req.full_url).query)
+        assert query["container_id"] == ["oc_test"]
+        assert query["page_size"] == ["20"]
+        assert query["sort_type"] == ["ByCreateTimeDesc"]
+        assert query["start_time"] == ["1710000000"]
+        assert query["end_time"] == ["1717776000"]
+        assert query["page_token"] == ["previous-page"]
         return {
             "code": 0,
             "data": {
@@ -98,7 +105,13 @@ def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytes
 
     monkeypatch.setattr(client, "_request_json", fake_request)
 
-    messages, next_token = client.list_chat_text_messages("oc_test", page_size=20)
+    messages, next_token = client.list_chat_text_messages(
+        "oc_test",
+        page_size=20,
+        page_token="previous-page",
+        start_time=datetime(2024, 3, 9, 16, 0, tzinfo=timezone.utc),
+        end_time=datetime(2024, 6, 7, 16, 0, tzinfo=timezone.utc),
+    )
 
     assert next_token == "next-page"
     assert len(messages) == 1

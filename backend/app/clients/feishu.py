@@ -137,15 +137,22 @@ class FeishuClient:
         *,
         page_size: int = 50,
         page_token: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
     ) -> tuple[list[FeishuChatMessage], str | None]:
         token = self.get_tenant_access_token()
         params: dict[str, str | int] = {
             "container_id_type": "chat",
             "container_id": chat_id,
             "page_size": max(1, min(page_size, 50)),
+            "sort_type": "ByCreateTimeDesc",
         }
         if page_token:
             params["page_token"] = page_token
+        if start_time:
+            params["start_time"] = int(start_time.timestamp())
+        if end_time:
+            params["end_time"] = int(end_time.timestamp())
         url = f"{self.message_url}?{parse.urlencode(params)}"
         data = self._get_json(url, token)
         source = data.get("data") if isinstance(data.get("data"), dict) else {}

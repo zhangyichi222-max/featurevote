@@ -56,7 +56,8 @@ def test_import_skips_previously_processed_message(monkeypatch: pytest.MonkeyPat
     second = asyncio.run(service.import_configured_chats())
 
     assert first.created == 1
-    assert second.skipped == 1
+    assert second.fetched == 0
+    assert second.skipped == 0
     assert second.created_titles == []
     assert session.scalar(select(PostModel).where(PostModel.title == "Export votes by department")).number == 1
 
@@ -155,7 +156,8 @@ def test_import_sends_chat_summary_with_created_titles(monkeypatch: pytest.Monke
     second = asyncio.run(service.import_configured_chats())
 
     assert stats.created == 1
-    assert second.skipped == 1
+    assert second.fetched == 0
+    assert second.skipped == 0
     assert len(feishu_client.sent_messages) == 1
     chat_id, summary = feishu_client.sent_messages[0]
     assert chat_id == "oc_test"
@@ -224,6 +226,142 @@ def test_grouped_import_skips_low_confidence_draft(monkeypatch: pytest.MonkeyPat
     assert record.status == "skipped"
 
 
+def test_import_continues_pagination_after_fully_processed_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    repository = PostsRepository(session)
+    old_message = _message("om_old", sent_at=datetime.now(timezone.utc) - timedelta(days=1))
+    repository.record_feishu_import(
+        message_id=old_message.message_id,
+        chat_id=old_message.chat_id,
+        sender_open_id=old_message.sender_open_id,
+        sender_name=old_message.sender_name,
+        raw_text=old_message.text,
+        status="created",
+    )
+    new_message = _message("om_new", sent_at=datetime.now(timezone.utc) - timedelta(days=2))
+    feishu_client = PagedFakeFeishuClient([
+        ([old_message], "page-2"),
+        ([new_message], None),
+    ])
+    deepseek_client = FakeDeepSeekClient()
+    service = FeishuRequirementImportService(
+        repository,
+        feishu_client=feishu_client,
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert [call["page_token"] for call in feishu_client.calls] == [None, "page-2"]
+    assert all(call["page_size"] == 50 for call in feishu_client.calls)
+    assert all(call["end_time"] - call["start_time"] == timedelta(days=90) for call in feishu_client.calls)
+    assert stats.fetched == 1
+    assert stats.created == 1
+    assert deepseek_client.ideas == [new_message.text]
+
+
+def test_import_ignores_messages_older_than_ninety_days(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    recent = _message("om_recent", sent_at=datetime.now(timezone.utc) - timedelta(days=89))
+    expired = _message("om_expired", sent_at=datetime.now(timezone.utc) - timedelta(days=91))
+    deepseek_client = FakeDeepSeekClient()
+    feishu_client = PagedFakeFeishuClient([
+        ([recent, expired], "should-not-be-read"),
+        ([_message("om_older", sent_at=datetime.now(timezone.utc) - timedelta(days=100))], None),
+    ])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=feishu_client,
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert stats.fetched == 1
+    assert stats.created == 1
+    assert len(feishu_client.calls) == 1
+    assert deepseek_client.ideas == [recent.text]
+    assert session.scalar(
+        select(FeishuImportedMessageModel).where(
+            FeishuImportedMessageModel.message_id == expired.message_id
+        )
+    ) is None
+
+
+def test_failed_message_is_retried_and_record_is_updated(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    message = _message("om_retry", sent_at=datetime.now(timezone.utc) - timedelta(days=1))
+    repository = PostsRepository(session)
+    failing_service = FeishuRequirementImportService(
+        repository,
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=FakeDeepSeekClient(fail_ids={message.text}),
+    )
+
+    first = asyncio.run(failing_service.import_configured_chats())
+    original_record = repository.get_imported_feishu_message(message.message_id)
+    original_id = original_record.id
+    assert first.failed == 1
+    assert original_record.status == "failed"
+
+    retry_client = FakeDeepSeekClient()
+    retry_service = FeishuRequirementImportService(
+        repository,
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=retry_client,
+    )
+    second = asyncio.run(retry_service.import_configured_chats())
+    updated_record = repository.get_imported_feishu_message(message.message_id)
+
+    assert second.fetched == 1
+    assert second.created == 1
+    assert retry_client.ideas == [message.text]
+    assert updated_record.id == original_id
+    assert updated_record.status == "created"
+    assert updated_record.error is None
+    assert session.scalars(
+        select(FeishuImportedMessageModel).where(
+            FeishuImportedMessageModel.message_id == message.message_id
+        )
+    ).all() == [updated_record]
+
+
+def test_failed_message_failure_updates_existing_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    message = _message("om_retry_failure", sent_at=datetime.now(timezone.utc) - timedelta(days=1))
+    repository = PostsRepository(session)
+    repository.record_feishu_import(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        sender_open_id=message.sender_open_id,
+        sender_name=message.sender_name,
+        raw_text=message.text,
+        status="failed",
+        error="old error",
+    )
+    service = FeishuRequirementImportService(
+        repository,
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=FakeDeepSeekClient(
+            fail_ids={message.text},
+            failure_detail="new error",
+        ),
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+    record = repository.get_imported_feishu_message(message.message_id)
+
+    assert stats.fetched == 1
+    assert stats.failed == 1
+    assert record.status == "failed"
+    assert record.error == "new error"
+    assert len(session.scalars(select(FeishuImportedMessageModel)).all()) == 1
+
+
 def test_debug_logs_are_concise_and_hide_internal_ids(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -248,7 +386,8 @@ def test_debug_logs_are_concise_and_hide_internal_ids(
 
     output = caplog.text
     assert stats.skipped == 1
-    assert "已读取 1 条消息" in output
+    assert "第 1 页：文本消息 1 条，已处理 0 条，失败重试 0 条，本次新增 1 条" in output
+    assert "历史消息读取完成：共 1 页，待处理 1 条" in output
     assert "正在分析第 1/1 组，共 1 条消息" in output
     assert "DeepSeek 分析完成：未识别到需求" in output
     assert "om_secret_message_id" not in output
@@ -268,8 +407,16 @@ class FakeFeishuClient:
         self.messages = list(messages)
         self.sent_messages: list[tuple[str, str]] = []
 
-    def list_chat_text_messages(self, chat_id: str, *, page_size: int = 50, page_token: str | None = None):
-        _ = chat_id, page_size, page_token
+    def list_chat_text_messages(
+        self,
+        chat_id: str,
+        *,
+        page_size: int = 50,
+        page_token: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ):
+        _ = chat_id, page_size, page_token, start_time, end_time
         return self.messages, None
 
     def send_chat_text_message(self, chat_id: str, text: str, uuid: str | None = None) -> None:
@@ -277,13 +424,47 @@ class FakeFeishuClient:
         self.sent_messages.append((chat_id, text))
 
 
+class PagedFakeFeishuClient(FakeFeishuClient):
+    def __init__(self, pages: list[tuple[list[FeishuChatMessage], str | None]]) -> None:
+        super().__init__([])
+        self.pages = pages
+        self.calls: list[dict] = []
+
+    def list_chat_text_messages(
+        self,
+        chat_id: str,
+        *,
+        page_size: int = 50,
+        page_token: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ):
+        self.calls.append(
+            {
+                "chat_id": chat_id,
+                "page_size": page_size,
+                "page_token": page_token,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        )
+        return self.pages[len(self.calls) - 1]
+
+
 class FakeDeepSeekClient:
-    def __init__(self, fail_ids: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        fail_ids: set[str] | None = None,
+        failure_detail: str = "AI unavailable",
+    ) -> None:
         self.fail_ids = fail_ids or set()
+        self.failure_detail = failure_detail
+        self.ideas: list[str] = []
 
     async def draft_suggestion(self, idea: str) -> SuggestionDraftResponse:
+        self.ideas.append(idea)
         if idea in self.fail_ids:
-            raise HTTPException(status_code=503, detail="AI unavailable")
+            raise HTTPException(status_code=503, detail=self.failure_detail)
         return SuggestionDraftResponse(
             title="Export votes by department",
             description="Let admins export vote totals grouped by department.",
