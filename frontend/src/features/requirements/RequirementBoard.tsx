@@ -1,4 +1,3 @@
-import { RichContentPreview } from "../rich-content/RichContentEditor";
 import type { Requirement, RequirementTag } from "../../types/requirement";
 import type { SortMode } from "./constants";
 
@@ -111,7 +110,6 @@ function RequirementListItem({
             <strong>{item.req_id}</strong>
             <b>{item.title}</b>
           </span>
-          <RichContentPreview markdown={item.description} className="requirement-summary" />
         </span>
         <span className="requirement-creator-cell">{item.creator_name}</span>
         {item.tags.length ? (
