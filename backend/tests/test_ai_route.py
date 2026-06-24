@@ -36,7 +36,6 @@ def client() -> Generator[TestClient, None, None]:
                 external_id="normal-open-id",
                 feishu_open_id="normal-open-id",
                 name="Normal User",
-                role="visitor",
             )
         )
         session.add(

@@ -24,7 +24,7 @@ export function Header({
           <>
             <div className="user-pill">
               <strong>{currentUser.name}</strong>
-              <span>{currentUser.role === "admin" ? "管理员" : "成员"}</span>
+              <span>成员</span>
             </div>
             <button className="secondary-button" type="button" onClick={onLogout} disabled={isBusy}>
               退出登录
@@ -39,5 +39,4 @@ export function Header({
     </header>
   );
 }
-
 

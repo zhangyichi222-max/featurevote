@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_posts_service, get_tasks_service, require_admin_user, require_current_user, require_mutating_origin
+from app.api.deps import get_posts_service, get_tasks_service, require_current_user, require_mutating_origin
 from app.models.post import UserModel
 from app.schemas.post import (
     ActionResult,
@@ -9,6 +9,7 @@ from app.schemas.post import (
     PostCreate,
     PostItem,
     PostListResponse,
+    PostUpdate,
     StatusResponseUpdate,
     TagCreate,
     TagListResponse,
@@ -49,6 +50,16 @@ async def get_post(post_id: str, service: PostsService = Depends(get_posts_servi
     return await service.get_post(post_id)
 
 
+@router.patch("/{post_id}", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])
+async def update_post(
+    post_id: str,
+    payload: PostUpdate,
+    service: PostsService = Depends(get_posts_service),
+    user: UserModel = Depends(require_current_user),
+) -> PostItem:
+    return await service.update_post(post_id, payload, user)
+
+
 @router.post("/{post_id}/vote", response_model=ActionResult, dependencies=[Depends(require_mutating_origin)])
 async def vote_post(
     post_id: str,
@@ -64,9 +75,9 @@ async def set_response(
     post_id: str,
     payload: StatusResponseUpdate,
     service: PostsService = Depends(get_posts_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> PostItem:
-    return await service.set_response(post_id, payload, admin)
+    return await service.set_response(post_id, payload, user)
 
 
 @router.post("/{post_id}/convert-to-task", dependencies=[Depends(require_mutating_origin)])
@@ -75,9 +86,9 @@ async def convert_post_to_task(
     payload: TaskCreate,
     posts_service: PostsService = Depends(get_posts_service),
     tasks_service: TasksService = Depends(get_tasks_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> dict[str, object]:
-    task = await tasks_service.convert_post_to_task(post_id, payload, admin)
+    task = await tasks_service.convert_post_to_task(post_id, payload, user)
     post = await posts_service.get_post(post_id)
     return {"post": post, "task": task}
 
@@ -87,9 +98,9 @@ async def mark_duplicate(
     post_id: str,
     payload: DuplicateUpdate,
     service: PostsService = Depends(get_posts_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> PostItem:
-    return await service.mark_duplicate(post_id, payload, admin)
+    return await service.mark_duplicate(post_id, payload, user)
 
 
 @router.post("/{post_id}/moderation", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])
@@ -97,9 +108,9 @@ async def moderate_post(
     post_id: str,
     payload: ModerationUpdate,
     service: PostsService = Depends(get_posts_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> PostItem:
-    _ = admin
+    _ = user
     return await service.moderate_post(post_id, payload)
 
 
@@ -107,9 +118,9 @@ async def moderate_post(
 async def archive_post(
     post_id: str,
     service: PostsService = Depends(get_posts_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> PostItem:
-    return await service.archive_post(post_id, admin)
+    return await service.archive_post(post_id, user)
 
 
 @tags_router.get("", response_model=TagListResponse)
@@ -121,7 +132,7 @@ async def list_tags(service: PostsService = Depends(get_posts_service)) -> TagLi
 async def create_tag(
     payload: TagCreate,
     service: PostsService = Depends(get_posts_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> ActionResult:
-    _ = admin
+    _ = user
     return await service.create_tag(payload)

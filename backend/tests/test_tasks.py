@@ -15,9 +15,9 @@ from app.services.tasks import TasksService
 from app.tests_support import make_session
 
 
-def test_admin_can_create_task_with_labels_and_assignment_notification() -> None:
+def test_logged_in_user_can_create_task_with_labels_and_assignment_notification() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     assignee = _add_user(session, "dev", "ou_dev")
 
     task = TasksRepository(session).create_task(
@@ -28,7 +28,7 @@ def test_admin_can_create_task_with_labels_and_assignment_notification() -> None
             assignee_user_id=assignee.id,
             labels=["Frontend"],
         ),
-        admin,
+        actor,
     )
 
     assert task.number == 1
@@ -40,36 +40,39 @@ def test_admin_can_create_task_with_labels_and_assignment_notification() -> None
     assert notification.recipient_open_id == "ou_dev"
 
 
-def test_assignee_can_only_update_status_and_description() -> None:
+def test_logged_in_user_can_update_all_task_fields() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     assignee = _add_user(session, "dev", "ou_dev")
     task = TasksRepository(session).create_task(
         TaskCreate(title="Fix bug", description_markdown="Bug", assignee_user_id=assignee.id),
-        admin,
+        actor,
     )
 
     updated = TasksRepository(session).update_task(
         task.id,
-        TaskUpdate(description_markdown="Done soon", status="in_progress"),
+        TaskUpdate(title="Updated task", description_markdown="Done soon", status="in_progress", labels=["Updated"]),
         assignee,
-        allow_admin_fields=False,
     )
 
+    assert updated.title == "Updated task"
     assert updated.status == "in_progress"
     assert updated.description_markdown == "Done soon"
-    notification = session.scalar(select(NotificationTaskModel).where(NotificationTaskModel.event_type == "task_status_changed"))
-    assert notification is not None
-    assert "todo -> in_progress" in notification.message
+    assert [label.name for label in updated.labels] == ["Updated"]
+    notifications = session.scalars(
+        select(NotificationTaskModel).where(NotificationTaskModel.event_type == "task_status_changed")
+    ).all()
+    assert {notification.user_id for notification in notifications} == {actor.id, assignee.id}
+    assert all("todo -> in_progress" in notification.message for notification in notifications)
 
 
 def test_task_filters_by_status_assignee_label_and_query() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     dev = _add_user(session, "dev", "ou_dev")
     repo = TasksRepository(session)
-    repo.create_task(TaskCreate(title="Frontend polish", assignee_user_id=dev.id, status="blocked", labels=["UI"]), admin)
-    repo.create_task(TaskCreate(title="Backend cleanup", status="todo", labels=["API"]), admin)
+    repo.create_task(TaskCreate(title="Frontend polish", assignee_user_id=dev.id, status="blocked", labels=["UI"]), actor)
+    repo.create_task(TaskCreate(title="Backend cleanup", status="todo", labels=["API"]), actor)
 
     results = repo.list_tasks(query="front", statuses=["blocked"], assignee_id=dev.id, labels=["ui"])
 
@@ -79,11 +82,11 @@ def test_task_filters_by_status_assignee_label_and_query() -> None:
 
 def test_create_task_rejects_missing_assignee() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     service = TasksService(TasksRepository(session))
 
     try:
-        _run(service.create_task(TaskCreate(title="Bad assignee", assignee_user_id="missing"), admin))
+        _run(service.create_task(TaskCreate(title="Bad assignee", assignee_user_id="missing"), actor))
     except Exception as exc:
         assert getattr(exc, "status_code") == 400
     else:
@@ -92,13 +95,13 @@ def test_create_task_rejects_missing_assignee() -> None:
 
 def test_service_lists_task_assignees() -> None:
     session = make_session()
-    _add_user(session, "admin", "ou_admin", role="admin")
+    _add_user(session, "actor", "ou_actor")
     _add_user(session, "dev", "ou_dev")
     service = TasksService(TasksRepository(session))
 
     response = _run(service.list_assignees())
 
-    assert [item.id for item in response.items] == ["admin", "dev"]
+    assert [item.id for item in response.items] == ["actor", "dev"]
 
 
 def test_create_label_is_idempotent_by_slug() -> None:
@@ -137,12 +140,12 @@ def test_task_label_creation_is_visible_from_requirement_tags() -> None:
 
 def test_delete_shared_label_removes_it_from_tasks_and_requirements() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     posts_repo = PostsRepository(session)
     tasks_repo = TasksRepository(session)
     label = tasks_repo.create_label(TaskLabelCreate(name="Cleanup", color="#abcdef"))
-    post = posts_repo.create_post(PostCreate(title="Cleanup post", description="Needs cleanup", tags=["Cleanup"]), admin)
-    task = tasks_repo.create_task(TaskCreate(title="Cleanup task", labels=["Cleanup"]), admin)
+    post = posts_repo.create_post(PostCreate(title="Cleanup post", description="Needs cleanup", tags=["Cleanup"]), actor)
+    task = tasks_repo.create_task(TaskCreate(title="Cleanup task", labels=["Cleanup"]), actor)
 
     assert tasks_repo.delete_label(label.id) is True
 
@@ -236,19 +239,19 @@ def test_shared_label_migration_merges_task_labels_by_slug() -> None:
 
 def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
-    post = _add_post(session, admin)
+    actor = _add_user(session, "actor", "ou_actor")
+    post = _add_post(session, actor)
     repo = TasksRepository(session)
 
     _post, task = repo.convert_post_to_task(
         post.id,
         TaskCreate(title="Ship export", description_markdown="From requirement", labels=["需求转入"]),
-        admin,
+        actor,
     )
     _post_again, task_again = repo.convert_post_to_task(
         post.id,
         TaskCreate(title="Different title", description_markdown="Duplicate attempt", labels=[]),
-        admin,
+        actor,
     )
 
     assert task.id == task_again.id
@@ -259,46 +262,46 @@ def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
 
 def test_task_done_and_canceled_sync_source_post_status() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
-    post = _add_post(session, admin)
+    actor = _add_user(session, "actor", "ou_actor")
+    post = _add_post(session, actor)
     repo = TasksRepository(session)
     _post, task = repo.convert_post_to_task(
         post.id,
         TaskCreate(title="Ship export", description_markdown="From requirement"),
-        admin,
+        actor,
     )
 
-    repo.update_task(task.id, TaskUpdate(status="done"), admin, allow_admin_fields=True)
+    repo.update_task(task.id, TaskUpdate(status="done"), actor)
     assert session.get(PostModel, post.id).status == "completed"
 
-    other_post = _add_post(session, admin, title="Cancel export")
+    other_post = _add_post(session, actor, title="Cancel export")
     _other_post, other_task = repo.convert_post_to_task(
         other_post.id,
         TaskCreate(title="Cancel export", description_markdown="From requirement"),
-        admin,
+        actor,
     )
-    repo.update_task(other_task.id, TaskUpdate(status="canceled"), admin, allow_admin_fields=True)
+    repo.update_task(other_task.id, TaskUpdate(status="canceled"), actor)
 
     assert session.get(PostModel, other_post.id).status == "declined"
 
 
 def test_delete_task_archives_task_and_source_post() -> None:
     session = make_session()
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
-    post = _add_post(session, admin)
+    actor = _add_user(session, "actor", "ou_actor")
+    post = _add_post(session, actor)
     repo = TasksRepository(session)
     _post, task = repo.convert_post_to_task(
         post.id,
         TaskCreate(title="Ship export", description_markdown="From requirement"),
-        admin,
+        actor,
     )
 
-    deleted = repo.delete_task(task.id, admin)
+    deleted = repo.delete_task(task.id, actor)
 
     assert deleted.id == task.id
     assert repo.get_task(task.id) is None
     assert session.get(PostModel, post.id).archived_at is not None
-    assert session.get(PostModel, post.id).archived_by_user_id == admin.id
+    assert session.get(PostModel, post.id).archived_by_user_id == actor.id
 
 
 def test_upload_image_validation_and_storage() -> None:
@@ -317,14 +320,13 @@ class FakeStorage:
         return "http://minio/task-images/demo.png"
 
 
-def _add_user(session, user_id: str, open_id: str, role: str = "visitor") -> UserModel:
+def _add_user(session, user_id: str, open_id: str) -> UserModel:
     user = UserModel(
         id=user_id,
         tenant_id=DEFAULT_TENANT_ID,
         external_id=open_id,
         feishu_open_id=open_id,
         name=user_id,
-        role=role,
     )
     session.add(user)
     session.commit()

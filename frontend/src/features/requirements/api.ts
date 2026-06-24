@@ -98,6 +98,17 @@ export async function createRequirement(payload: {
   });
 }
 
+export async function updateRequirement(
+  requirementId: string,
+  payload: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+  },
+) {
+  return apiClient.patch<PostItem>(`/posts/${requirementId}`, payload);
+}
+
 export async function draftRequirementWithAi(payload: {
   idea: string;
 }) {
@@ -170,8 +181,8 @@ export async function fetchCurrentUser() {
   if (data.user !== undefined) {
     return data.user;
   }
-  if (data.id && data.name && data.role) {
-    return { id: data.id, name: data.name, role: data.role };
+  if (data.id && data.name) {
+    return { id: data.id, name: data.name };
   }
   return null;
 }

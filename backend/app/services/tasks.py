@@ -52,10 +52,10 @@ class TasksService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
         return self.repository.create_task(payload, user)
 
-    async def convert_post_to_task(self, post_id: str, payload: TaskCreate, admin: UserModel) -> TaskItem:
+    async def convert_post_to_task(self, post_id: str, payload: TaskCreate, user: UserModel) -> TaskItem:
         if payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
-        post, task = self.repository.convert_post_to_task(post_id, payload, admin)
+        post, task = self.repository.convert_post_to_task(post_id, payload, user)
         if post is None or task is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
         return task
@@ -65,21 +65,16 @@ class TasksService:
         if task is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
-        allow_admin_fields = user.role == "admin"
-        if not allow_admin_fields and task.assignee_user_id != user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins or assignees can update tasks.")
-        if not allow_admin_fields and (payload.title is not None or "assignee_user_id" in payload.model_fields_set or payload.labels is not None):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Assignees can only update status and description.")
-        if allow_admin_fields and payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
+        if payload.assignee_user_id and not self.repository.user_exists(payload.assignee_user_id):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee not found.")
 
-        updated = self.repository.update_task(task_id, payload, user, allow_admin_fields=allow_admin_fields)
+        updated = self.repository.update_task(task_id, payload, user)
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
         return updated
 
-    async def delete_task(self, task_id: str, admin: UserModel) -> ActionResult:
-        deleted = self.repository.delete_task(task_id, admin)
+    async def delete_task(self, task_id: str, user: UserModel) -> ActionResult:
+        deleted = self.repository.delete_task(task_id, user)
         if deleted is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
         return ActionResult(message="Task deleted.")

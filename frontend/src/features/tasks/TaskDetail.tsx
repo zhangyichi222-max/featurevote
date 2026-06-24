@@ -1,18 +1,15 @@
 import { RichContentPreview } from "../rich-content/RichContentEditor";
-import type { CurrentUser } from "../../types/requirement";
 import type { TaskItem, TaskStatus } from "../../types/task";
 import { statusLabels, statuses } from "./constants";
 
 export function TaskDetail({
   task,
-  currentUser,
   isBusy,
   onEdit,
   onStatusChange,
   onDelete,
 }: {
   task: TaskItem | null;
-  currentUser: CurrentUser;
   isBusy: boolean;
   onEdit: (task: TaskItem) => void;
   onStatusChange: (task: TaskItem, status: TaskStatus) => Promise<void>;
@@ -26,8 +23,6 @@ export function TaskDetail({
       </aside>
     );
   }
-  const canEdit = currentUser.role === "admin" || task.assignee?.id === currentUser.id;
-  const canDelete = currentUser.role === "admin";
   return (
     <aside className="task-detail">
       <div className="task-detail-header">
@@ -35,27 +30,21 @@ export function TaskDetail({
           <span className="task-detail-key">TASK-{task.number}</span>
           <h3>{task.title}</h3>
         </div>
-        {canEdit ? <button className="secondary-button" type="button" onClick={() => onEdit(task)}>编辑</button> : null}
+        <button className="secondary-button" type="button" onClick={() => onEdit(task)}>编辑</button>
       </div>
-      {canDelete ? (
-        <div className="task-detail-actions">
-          <button className="danger-button" type="button" onClick={() => onDelete(task)} disabled={isBusy}>
-            删除
-          </button>
-        </div>
-      ) : null}
+      <div className="task-detail-actions">
+        <button className="danger-button" type="button" onClick={() => onDelete(task)} disabled={isBusy}>
+          删除
+        </button>
+      </div>
       <div className="task-properties">
         <div className="task-property-row">
           <span>状态</span>
-          {canEdit ? (
-            <select value={task.status} onChange={(event) => onStatusChange(task, event.target.value as TaskStatus)} disabled={isBusy}>
-              {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => (
-                <option key={item} value={item}>{statusLabels[item]}</option>
-              ))}
-            </select>
-          ) : (
-            <strong className={`task-status status-${task.status}`}>{statusLabels[task.status]}</strong>
-          )}
+          <select value={task.status} onChange={(event) => onStatusChange(task, event.target.value as TaskStatus)} disabled={isBusy}>
+            {statuses.filter((item): item is TaskStatus => item !== "all").map((item) => (
+              <option key={item} value={item}>{statusLabels[item]}</option>
+            ))}
+          </select>
         </div>
         <div className="task-property-row">
           <span>负责人</span>
@@ -84,5 +73,4 @@ export function TaskDetail({
     </aside>
   );
 }
-
 

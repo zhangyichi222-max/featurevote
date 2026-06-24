@@ -39,7 +39,6 @@ frontend/
 - `RequirementBoardPage`: 需求列表页
 - `RequirementSubmitForm`: 提交需求表单
 - `RequirementCard`: 单条需求卡片
-- `AdminStatusPanel`: 管理员状态更新面板
 
 ## 3. 后端架构
 
@@ -86,7 +85,7 @@ backend/
 
 ### 状态更新
 
-1. 管理员更新状态
+1. 登录用户更新状态
 2. 后端写回 `requirements.status`
 3. 前端重新拉取最新数据
 
@@ -99,7 +98,7 @@ backend/
 
 ## 6. 后续演进
 
-- 增加管理员权限控制
+- 按产品需要增加权限控制
 - 引入分页、筛选、排序
 - 给 SQLite 补充迁移方案
 - 未来如有需要，再替换为更完整的关系型数据库

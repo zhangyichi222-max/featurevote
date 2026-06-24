@@ -16,7 +16,6 @@ export function TaskEditor({
   onClose,
   onCreateLabel,
   onDeleteLabel,
-  canEditAdminFields,
   onSave,
 }: {
   task: TaskItem | null;
@@ -26,7 +25,6 @@ export function TaskEditor({
   onClose: () => void;
   onCreateLabel: (name: string) => Promise<void>;
   onDeleteLabel: (labelId: string) => Promise<void>;
-  canEditAdminFields: boolean;
   onSave: (payload: TaskPayload) => Promise<void>;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
@@ -71,13 +69,12 @@ export function TaskEditor({
             minLength={3}
             maxLength={160}
             required
-            disabled={!canEditAdminFields}
           />
         </label>
         <div className="task-editor-grid">
           <label>
             <span>负责人</span>
-            <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} disabled={!canEditAdminFields}>
+            <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
               <option value="">未分配</option>
               {assignees.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
             </select>
@@ -94,7 +91,6 @@ export function TaskEditor({
           <LabelPicker
             labels={labels}
             selectedNames={selectedLabels}
-            disabled={!canEditAdminFields}
             onToggle={(name) => {
               setSelectedLabels((current) =>
                 current.includes(name) ? current.filter((selectedName) => selectedName !== name) : [...current, name],
@@ -107,7 +103,7 @@ export function TaskEditor({
               });
             }}
           />
-          {canEditAdminFields ? <div className="new-label-row">
+          <div className="new-label-row">
             <input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="新标签" />
             <button className="secondary-button" type="button" onClick={() => {
               const name = newLabel.trim();
@@ -117,7 +113,7 @@ export function TaskEditor({
                 setNewLabel("");
               });
             }}>添加标签</button>
-          </div> : null}
+          </div>
         </div>
         <RichContentEditor value={description} onChange={setDescription} />
         {error ? <div className="form-error">{error}</div> : null}
@@ -129,5 +125,4 @@ export function TaskEditor({
     </Modal>
   );
 }
-
 

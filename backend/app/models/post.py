@@ -41,7 +41,6 @@ class UserModel(Base):
     department_ids: Mapped[str] = mapped_column(Text, nullable=False, default="")
     group_ids: Mapped[str] = mapped_column(Text, nullable=False, default="")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(32), nullable=False, default="visitor")
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
 

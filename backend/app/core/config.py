@@ -87,9 +87,6 @@ class Settings(BaseSettings):
     feishu_app_id: str = ""
     feishu_app_secret: str = ""
     feishu_redirect_uri: str = "http://192.168.200.33:8090/api/v1/auth/feishu/browser/callback"
-    feishu_admin_open_ids: list[str] = []
-    feishu_admin_department_ids: list[str] = []
-    feishu_admin_group_ids: list[str] = []
     feishu_import_chat_ids: list[str] = []
     feishu_import_interval_seconds: float = 60
     feishu_import_batch_size: int = 50
@@ -133,9 +130,6 @@ class Settings(BaseSettings):
         return _parse_str_list(value)
 
     @field_validator(
-        "feishu_admin_open_ids",
-        "feishu_admin_department_ids",
-        "feishu_admin_group_ids",
         "feishu_import_chat_ids",
         "feishu_import_default_tags",
         mode="before",

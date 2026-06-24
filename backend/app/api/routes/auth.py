@@ -105,4 +105,4 @@ def _set_auth_cookie(response: Response, user: UserModel) -> None:
 
 
 def _to_user_item(user: UserModel):
-    return {"id": user.id, "name": user.name, "role": user.role}
+    return {"id": user.id, "name": user.name}

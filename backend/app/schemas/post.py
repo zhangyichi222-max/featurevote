@@ -1,17 +1,15 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 PostStatus = Literal["open", "planned", "in_progress", "completed", "declined", "duplicate"]
-UserRole = Literal["visitor", "admin"]
 
 
 class UserItem(BaseModel):
     id: str
     name: str
-    role: UserRole
 
 
 class TagItem(BaseModel):
@@ -70,6 +68,40 @@ class PostCreate(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=1, max_length=5000)
     tags: list[str] = Field(default_factory=list)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        if len(value.strip()) < 3:
+            raise ValueError("Title must contain at least 3 non-whitespace characters.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Description must not be blank.")
+        return value
+
+
+class PostUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=120)
+    description: str | None = Field(default=None, min_length=1, max_length=5000)
+    tags: list[str] | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        if value is not None and len(value.strip()) < 3:
+            raise ValueError("Title must contain at least 3 non-whitespace characters.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Description must not be blank.")
+        return value
 
 
 class VoteCreate(BaseModel):

@@ -19,13 +19,14 @@ The backend exposes a Fider-like product core under `/api/v1`:
 - `GET /posts` - list, search, and filter posts
 - `POST /posts` - create a post
 - `GET /posts/{post_id}` - fetch post detail
+- `PATCH /posts/{post_id}` - update post title, description, and existing tags
 - `POST /posts/{post_id}/vote` - vote with duplicate-vote protection
 - `POST /posts/{post_id}/response` - set status and staff response
 - `POST /posts/{post_id}/duplicate` - mark a post as duplicate
 - `POST /posts/{post_id}/moderation` - approve or reject a post
 - `GET /tags` and `POST /tags` - list and create tags
 
-The first version uses a built-in default tenant. Email, billing, attachments, and full admin settings are intentionally out of scope.
+The first version uses a built-in default tenant. Email, billing, and advanced permission settings are intentionally out of scope.
 
 ## Local Development
 
@@ -61,7 +62,7 @@ MYSQL_PASSWORD=
 MYSQL_DATABASE=featurevote
 ```
 
-On startup, SQLAlchemy creates the product-core tables and seeds a default tenant, demo admin, and starter tags.
+On startup, SQLAlchemy creates the product-core tables and seeds a default tenant and starter tags.
 
 ## Feishu Notifications
 

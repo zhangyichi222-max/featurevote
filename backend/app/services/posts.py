@@ -10,6 +10,7 @@ from app.schemas.post import (
     PostCreate,
     PostItem,
     PostListResponse,
+    PostUpdate,
     StatusResponseUpdate,
     TagCreate,
     TagListResponse,
@@ -48,6 +49,21 @@ class PostsService:
     async def create_post(self, payload: PostCreate, user: UserModel) -> PostItem:
         return self.repository.create_post(payload, user)
 
+    async def update_post(self, post_id: str, payload: PostUpdate, user: UserModel) -> PostItem:
+        _ = user
+        await self.get_post(post_id)
+        if payload.tags is not None:
+            unknown_tags = self.repository.find_unknown_tag_names(payload.tags)
+            if unknown_tags:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown tags: {', '.join(unknown_tags)}",
+                )
+        updated = self.repository.update_post(post_id, payload)
+        if updated is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        return updated
+
     async def vote_post(self, post_id: str, user: UserModel) -> ActionResult:
         await self.get_post(post_id)
         try:
@@ -66,24 +82,24 @@ class PostsService:
         self.repository.create_tag(payload)
         return ActionResult(message="Tag created successfully.")
 
-    async def set_response(self, post_id: str, payload: StatusResponseUpdate, admin: UserModel) -> PostItem:
+    async def set_response(self, post_id: str, payload: StatusResponseUpdate, actor: UserModel) -> PostItem:
         await self.get_post(post_id)
-        return self.repository.set_response(post_id, payload, admin)
+        return self.repository.set_response(post_id, payload, actor)
 
-    async def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, admin: UserModel) -> PostItem:
+    async def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, actor: UserModel) -> PostItem:
         if post_id == payload.original_post_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A post cannot duplicate itself.")
         await self.get_post(post_id)
         await self.get_post(payload.original_post_id)
-        return self.repository.mark_duplicate(post_id, payload, admin)
+        return self.repository.mark_duplicate(post_id, payload, actor)
 
     async def moderate_post(self, post_id: str, payload: ModerationUpdate) -> PostItem:
         await self.get_post(post_id)
         return self.repository.moderate_post(post_id, payload)
 
-    async def archive_post(self, post_id: str, admin: UserModel) -> PostItem:
+    async def archive_post(self, post_id: str, actor: UserModel) -> PostItem:
         await self.get_post(post_id)
-        post = self.repository.archive_post(post_id, admin)
+        post = self.repository.archive_post(post_id, actor)
         if post is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
         return post

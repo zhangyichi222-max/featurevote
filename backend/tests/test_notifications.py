@@ -6,20 +6,20 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.models.post import NotificationTaskModel, UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository, seed_default_data
-from app.schemas.post import DuplicateUpdate, PostCreate, StatusResponseUpdate
+from app.schemas.post import DuplicateUpdate, PostCreate, PostUpdate, StatusResponseUpdate
 from app.services.notifications import NotificationProcessor
 
 
 def test_status_change_enqueues_creator_notification() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     post = PostsRepository(session).create_post(PostCreate(title="Need exports", description="Please add export", tags=[]), creator)
 
     PostsRepository(session).set_response(
         post.id,
         StatusResponseUpdate(status="planned", text="We will plan this."),
-        admin,
+        actor,
     )
 
     task = session.scalar(select(NotificationTaskModel))
@@ -34,16 +34,16 @@ def test_status_change_enqueues_creator_notification() -> None:
 def test_duplicate_status_transition_dedupe_does_not_fail_update() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     repo = PostsRepository(session)
     post = repo.create_post(PostCreate(title="Need dedupe", description="Dedupe", tags=[]), creator)
 
-    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="First."), admin)
+    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="First."), actor)
     post_model = repo.get_active_post_model(post.id)
     post_model.status = "open"
     session.add(post_model)
     session.commit()
-    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="Second."), admin)
+    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="Second."), actor)
 
     tasks = session.scalars(select(NotificationTaskModel)).all()
     assert len(tasks) == 1
@@ -66,14 +66,30 @@ def test_votes_above_previous_threshold_only_record_votes() -> None:
     assert tasks == []
 
 
+def test_editing_post_content_does_not_enqueue_notification() -> None:
+    session = _session()
+    creator = _add_user(session, "creator", "ou_creator")
+    repo = PostsRepository(session)
+    post = repo.create_post(PostCreate(title="Original", description="Original", tags=[]), creator)
+
+    updated = repo.update_post(
+        post.id,
+        PostUpdate(title="Updated", description="Updated description", tags=["Feature"]),
+    )
+
+    assert updated is not None
+    assert updated.title == "Updated"
+    assert session.scalars(select(NotificationTaskModel)).all() == []
+
+
 def test_completed_and_declined_notifications_use_product_status_labels() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     post = PostsRepository(session).create_post(PostCreate(title="Need status labels", description="Labels", tags=[]), creator)
 
-    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="completed", text="Shipped."), admin)
-    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="declined", text="Not planned."), admin)
+    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="completed", text="Shipped."), actor)
+    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="declined", text="Not planned."), actor)
 
     messages = [task.message for task in session.scalars(select(NotificationTaskModel)).all()]
     assert any("新状态：done" in message for message in messages)
@@ -83,13 +99,13 @@ def test_completed_and_declined_notifications_use_product_status_labels() -> Non
 def test_duplicate_and_archive_do_not_enqueue_notifications() -> None:
     session = _session()
     creator = _add_user(session, "creator", "ou_creator")
-    admin = _add_user(session, "admin", "ou_admin", role="admin")
+    actor = _add_user(session, "actor", "ou_actor")
     repo = PostsRepository(session)
     original = repo.create_post(PostCreate(title="Original", description="Original", tags=[]), creator)
     duplicate = repo.create_post(PostCreate(title="Duplicate", description="Duplicate", tags=[]), creator)
 
-    repo.mark_duplicate(duplicate.id, DuplicateUpdate(original_post_id=original.id, text="Duplicate"), admin)
-    repo.archive_post(original.id, admin)
+    repo.mark_duplicate(duplicate.id, DuplicateUpdate(original_post_id=original.id, text="Duplicate"), actor)
+    repo.archive_post(original.id, actor)
 
     assert session.scalars(select(NotificationTaskModel)).all() == []
 
@@ -166,14 +182,13 @@ def _session():
     return session
 
 
-def _add_user(session, user_id: str, open_id: str, role: str = "visitor") -> UserModel:
+def _add_user(session, user_id: str, open_id: str) -> UserModel:
     user = UserModel(
         id=user_id,
         tenant_id=DEFAULT_TENANT_ID,
         external_id=open_id,
         feishu_open_id=open_id,
         name=user_id,
-        role=role,
     )
     session.add(user)
     session.commit()

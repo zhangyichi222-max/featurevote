@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.api.deps import get_tasks_service, require_admin_user, require_current_user, require_mutating_origin
+from app.api.deps import get_tasks_service, require_current_user, require_mutating_origin
 from app.models.post import UserModel
 from app.schemas.post import ActionResult
 from app.schemas.task import (
@@ -40,9 +40,9 @@ async def list_tasks(
 async def create_task(
     payload: TaskCreate,
     service: TasksService = Depends(get_tasks_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> TaskItem:
-    return await service.create_task(payload, admin)
+    return await service.create_task(payload, user)
 
 
 @router.get("/assignees", response_model=TaskAssigneeListResponse)
@@ -78,9 +78,9 @@ async def update_task(
 async def delete_task(
     task_id: str,
     service: TasksService = Depends(get_tasks_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> ActionResult:
-    return await service.delete_task(task_id, admin)
+    return await service.delete_task(task_id, user)
 
 
 @labels_router.get("", response_model=TaskLabelListResponse)
@@ -96,9 +96,9 @@ async def list_task_labels(
 async def create_task_label(
     payload: TaskLabelCreate,
     service: TasksService = Depends(get_tasks_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> TaskLabelListResponse:
-    _ = admin
+    _ = user
     return await service.create_label(payload)
 
 
@@ -106,9 +106,9 @@ async def create_task_label(
 async def delete_task_label(
     label_id: str,
     service: TasksService = Depends(get_tasks_service),
-    admin: UserModel = Depends(require_admin_user),
+    user: UserModel = Depends(require_current_user),
 ) -> ActionResult:
-    _ = admin
+    _ = user
     return await service.delete_label(label_id)
 
 

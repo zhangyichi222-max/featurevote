@@ -76,7 +76,7 @@ class TasksRepository:
         self.session.commit()
         return self.get_task(task.id)
 
-    def convert_post_to_task(self, post_id: str, payload: TaskCreate, admin: UserModel) -> tuple[object | None, TaskItem | None]:
+    def convert_post_to_task(self, post_id: str, payload: TaskCreate, actor: UserModel) -> tuple[object | None, TaskItem | None]:
         post = self._get_active_post(post_id)
         if post is None:
             return None, None
@@ -90,7 +90,7 @@ class TasksRepository:
         )
         if existing is not None:
             if post.status != "in_progress":
-                self._set_post_status(post, "in_progress", "需求已关联任务，进入处理中。", admin)
+                self._set_post_status(post, "in_progress", "需求已关联任务，进入处理中。", actor)
             self.session.commit()
             return post, self.get_task(existing.id)
 
@@ -103,13 +103,13 @@ class TasksRepository:
             status="todo",
             source_post_id=post.id,
             assignee_user_id=payload.assignee_user_id,
-            created_by_user_id=admin.id,
-            updated_by_user_id=admin.id,
+            created_by_user_id=actor.id,
+            updated_by_user_id=actor.id,
             created_at=utc_now(),
             updated_at=utc_now(),
         )
         task.labels = [self.ensure_label(label_name) for label_name in payload.labels]
-        self._set_post_status(post, "in_progress", "需求已转为任务，进入处理中。", admin)
+        self._set_post_status(post, "in_progress", "需求已转为任务，进入处理中。", actor)
         self.session.add(task)
         self.session.flush()
         if task.assignee is not None:
@@ -120,7 +120,7 @@ class TasksRepository:
     def user_exists(self, user_id: str) -> bool:
         return self.session.get(UserModel, user_id) is not None
 
-    def update_task(self, task_id: str, payload: TaskUpdate, user: UserModel, allow_admin_fields: bool) -> TaskItem | None:
+    def update_task(self, task_id: str, payload: TaskUpdate, user: UserModel) -> TaskItem | None:
         task = self.get_task_model(task_id)
         if task is None:
             return None
@@ -128,13 +128,12 @@ class TasksRepository:
         previous_status = task.status
         previous_assignee_id = task.assignee_user_id
 
-        if allow_admin_fields:
-            if payload.title is not None:
-                task.title = payload.title.strip()
-            if "assignee_user_id" in payload.model_fields_set:
-                task.assignee_user_id = payload.assignee_user_id
-            if payload.labels is not None:
-                task.labels = [self.ensure_label(label_name) for label_name in payload.labels]
+        if payload.title is not None:
+            task.title = payload.title.strip()
+        if "assignee_user_id" in payload.model_fields_set:
+            task.assignee_user_id = payload.assignee_user_id
+        if payload.labels is not None:
+            task.labels = [self.ensure_label(label_name) for label_name in payload.labels]
 
         if payload.description_markdown is not None:
             task.description_markdown = payload.description_markdown
@@ -146,7 +145,7 @@ class TasksRepository:
         self.session.add(task)
         self.session.flush()
 
-        if allow_admin_fields and task.assignee_user_id and task.assignee_user_id != previous_assignee_id and task.assignee:
+        if task.assignee_user_id and task.assignee_user_id != previous_assignee_id and task.assignee:
             self._enqueue_task_assignment_notification(task, task.assignee)
         if payload.status is not None and task.status != previous_status:
             self._enqueue_task_status_notification(task, previous_status, task.status)
@@ -287,12 +286,8 @@ class TasksRepository:
 
     def _enqueue_task_status_notification(self, task: TaskModel, previous_status: str, new_status: str) -> None:
         recipients: dict[str, tuple[str, str | None]] = {}
-        if task.assignee is not None:
-            recipients[task.assignee.id] = (task.assignee.id, task.assignee.feishu_open_id)
-        for admin in self.session.scalars(select(UserModel).where(UserModel.tenant_id == DEFAULT_TENANT_ID, UserModel.role == "admin")):
-            recipients[admin.id] = (admin.id, admin.feishu_open_id)
-        for index, open_id in enumerate(settings.feishu_admin_open_ids):
-            recipients[f"settings-admin-{index}"] = (task.updated_by_user_id or task.created_by_user_id, open_id)
+        for user in self.session.scalars(select(UserModel).where(UserModel.tenant_id == DEFAULT_TENANT_ID)):
+            recipients[user.id] = (user.id, user.feishu_open_id)
 
         for recipient_key, (user_id, open_id) in recipients.items():
             self._enqueue_notification(
@@ -369,7 +364,7 @@ class TasksRepository:
         return TaskLabelItem(id=label.id, name=label.name, slug=label.slug, color=label.color)
 
     def _to_user_item(self, user: UserModel) -> UserItem:
-        return UserItem(id=user.id, name=user.name, role=user.role)
+        return UserItem(id=user.id, name=user.name)
 
 
 def _slugify(value: str) -> str:

@@ -33,8 +33,6 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   const [notice, setNotice] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
-  const isAdmin = currentUser?.role === "admin";
-
   async function loadTasks() {
     const data = await fetchTasks({ query, status, assigneeId, label });
     setTasks(data.items);
@@ -81,15 +79,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
     setIsBusy(true);
     try {
       if (editingTask) {
-        await updateTask(
-          editingTask.id,
-          isAdmin
-            ? payload
-            : {
-                description_markdown: payload.description_markdown,
-                status: payload.status,
-              },
-        );
+        await updateTask(editingTask.id, payload);
         setNotice("任务已更新。");
       } else {
         await createTask(payload);
@@ -121,10 +111,6 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   }
 
   async function handleDeleteTask(task: TaskItem) {
-    if (!isAdmin) {
-      setNotice("只有管理员可以删除任务。");
-      return;
-    }
     const sourceMessage = task.source_post ? "，并同步删除关联需求" : "";
     if (!window.confirm(`确定删除 TASK-${task.number}${sourceMessage}吗？`)) {
       return;
@@ -154,7 +140,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   return (
     <section className="task-page">
       {notice ? <div className="task-notice">{notice}</div> : null}
-      <TaskToolbar isAdmin={isAdmin} onNewTask={() => setIsEditorOpen(true)} />
+      <TaskToolbar onNewTask={() => setIsEditorOpen(true)} />
 
       <TaskFilters
         query={query}
@@ -175,7 +161,6 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
 
         <TaskDetail
           task={selectedTask}
-          currentUser={currentUser}
           isBusy={isBusy}
           onEdit={(task) => {
             setEditingTask(task);
@@ -211,7 +196,6 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
             setLabels(data.items);
             await loadTasks();
           }}
-          canEditAdminFields={isAdmin}
           onSave={handleSave}
         />
       ) : null}

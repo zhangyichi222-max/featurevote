@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "../../api/client";
 import type { CurrentUser, Requirement, RequirementStatus, RequirementTag } from "../../types/requirement";
-import { archiveRequirement, convertRequirementToTask, createRequirement, createTag, fetchRequirements, fetchTags, updateRequirementStatus, voteRequirement } from "./api";
+import { archiveRequirement, convertRequirementToTask, createRequirement, createTag, fetchRequirements, fetchTags, updateRequirement, updateRequirementStatus, voteRequirement } from "./api";
 import { RequirementBoard } from "./RequirementBoard";
 import { RequirementComposer } from "./RequirementComposer";
 import { RequirementDetail } from "./RequirementDetail";
+import { RequirementEditor } from "./RequirementEditor";
 import { RequirementTaskModal } from "./RequirementTaskModal";
 import type { SortMode, StatusFilter } from "./constants";
 import { statusMeta, statusOrder, tagColors } from "./constants";
@@ -19,8 +20,8 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tags, setTags] = useState<RequirementTag[]>([]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Requirement | null>(null);
   const [conversionItem, setConversionItem] = useState<Requirement | null>(null);
-  const isAdmin = currentUser?.role === "admin";
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -105,6 +106,24 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
     return data.items;
   }
 
+  async function handleEdit(payload: { title: string; description: string; tags: string[] }) {
+    if (!editingItem || !requireLogin("编辑需求")) {
+      return;
+    }
+    setIsBusy(true);
+    try {
+      await updateRequirement(editingItem.id, payload);
+      await loadRequirements();
+      setEditingItem(null);
+      setNotice("需求已更新。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "需求保存失败。");
+      throw error;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleVote(requirementId: string) {
     if (!requireLogin("投票")) {
       return;
@@ -122,8 +141,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   }
 
   async function handleStatusChange(requirementId: string, status: RequirementStatus) {
-    if (!isAdmin) {
-      setNotice("只有管理员可以修改状态。");
+    if (!requireLogin("修改状态")) {
       return;
     }
     const item = items.find((entry) => entry.id === requirementId);
@@ -174,8 +192,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   }
 
   async function handleArchive(requirementId: string) {
-    if (!isAdmin) {
-      setNotice("只有管理员可以删除建议。");
+    if (!requireLogin("删除建议")) {
       return;
     }
     if (!window.confirm("确定删除这条建议吗？删除后前台列表将不再显示。")) {
@@ -250,7 +267,19 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
           onStatusChange={handleStatusChange}
           onArchive={handleArchive}
           onOpenTask={openLinkedTask}
-          isAdmin={isAdmin}
+          onEdit={setEditingItem}
+          canEdit={Boolean(currentUser)}
+          canManage={Boolean(currentUser)}
+        />
+      ) : null}
+
+      {editingItem ? (
+        <RequirementEditor
+          item={editingItem}
+          tags={tags}
+          isBusy={isBusy}
+          onClose={() => setEditingItem(null)}
+          onSave={handleEdit}
         />
       ) : null}
 

@@ -765,7 +765,6 @@ def _add_user(session, user_id: str, open_id: str) -> UserModel:
         external_id=f"external-{user_id}",
         feishu_open_id=open_id,
         name=user_id,
-        role="visitor",
     )
     session.add(user)
     session.commit()

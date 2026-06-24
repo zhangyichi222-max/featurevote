@@ -20,6 +20,7 @@ from app.schemas.post import (
     ModerationUpdate,
     PostCreate,
     PostItem,
+    PostUpdate,
     StatusResponseUpdate,
     TagCreate,
     TagItem,
@@ -165,6 +166,35 @@ class PostsRepository:
             self.session.rollback()
             raise
 
+    def update_post(self, post_id: str, payload: PostUpdate) -> PostItem | None:
+        post = self.get_active_post_model(post_id)
+        if post is None:
+            return None
+        if payload.title is not None:
+            post.title = payload.title.strip()
+        if payload.description is not None:
+            post.description = payload.description
+        if payload.tags is not None:
+            post.tags = self._get_tags_by_names(payload.tags)
+        post.updated_at = _utc_now()
+        self.session.add(post)
+        self.session.commit()
+        return self.get_post(post_id)
+
+    def find_unknown_tag_names(self, names: list[str]) -> list[str]:
+        normalized_names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
+        if not normalized_names:
+            return []
+        existing_names = set(
+            self.session.scalars(
+                select(TagModel.name).where(
+                    TagModel.tenant_id == DEFAULT_TENANT_ID,
+                    TagModel.name.in_(normalized_names),
+                )
+            ).all()
+        )
+        return [name for name in normalized_names if name not in existing_names]
+
     def list_tags(self) -> list[TagItem]:
         tags = self.session.scalars(
             select(TagModel).where(TagModel.tenant_id == DEFAULT_TENANT_ID).order_by(TagModel.name.asc())
@@ -176,7 +206,7 @@ class PostsRepository:
         self.session.commit()
         return self._to_tag_item(tag)
 
-    def set_response(self, post_id: str, payload: StatusResponseUpdate, admin: UserModel) -> PostItem:
+    def set_response(self, post_id: str, payload: StatusResponseUpdate, actor: UserModel) -> PostItem:
         post = self.get_active_post_model(post_id)
         previous_status = post.status
         post.status = payload.status
@@ -185,13 +215,13 @@ class PostsRepository:
             post.response = PostResponseModel(
                 id=uuid4().hex,
                 post_id=post_id,
-                user_id=admin.id,
+                user_id=actor.id,
                 text=payload.text,
                 responded_at=_utc_now(),
             )
         else:
             post.response.text = payload.text
-            post.response.user_id = admin.id
+            post.response.user_id = actor.id
             post.response.responded_at = _utc_now()
         if previous_status != payload.status and payload.status in NOTIFY_STATUS_VALUES:
             self._enqueue_status_notification(post, previous_status, payload.status, payload.text)
@@ -199,7 +229,7 @@ class PostsRepository:
         self.session.commit()
         return self.get_post(post_id)
 
-    def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, admin: UserModel) -> PostItem:
+    def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, actor: UserModel) -> PostItem:
         post = self.get_active_post_model(post_id)
         original = self.get_active_post_model(payload.original_post_id)
         post.status = "duplicate"
@@ -209,13 +239,13 @@ class PostsRepository:
             post.response = PostResponseModel(
                 id=uuid4().hex,
                 post_id=post.id,
-                user_id=admin.id,
+                user_id=actor.id,
                 text=payload.text,
                 responded_at=_utc_now(),
             )
         else:
             post.response.text = payload.text
-            post.response.user_id = admin.id
+            post.response.user_id = actor.id
             post.response.responded_at = _utc_now()
         self.session.add(post)
         self.session.commit()
@@ -229,13 +259,13 @@ class PostsRepository:
         self.session.commit()
         return self.get_post(post_id)
 
-    def archive_post(self, post_id: str, admin: UserModel) -> PostItem | None:
+    def archive_post(self, post_id: str, actor: UserModel) -> PostItem | None:
         post = self.get_active_post_model(post_id)
         if post is None:
             return None
         item = self._to_post_item(post)
         post.archived_at = _utc_now()
-        post.archived_by_user_id = admin.id
+        post.archived_by_user_id = actor.id
         post.updated_at = _utc_now()
         self.session.add(post)
         self.session.commit()
@@ -257,7 +287,6 @@ class PostsRepository:
             tenant_id=DEFAULT_TENANT_ID,
             external_id=external_id,
             name=name,
-            role="visitor",
             created_at=_utc_now(),
         )
         self.session.add(user)
@@ -282,7 +311,6 @@ class PostsRepository:
             external_id=f"feishu:{open_id}",
             feishu_open_id=open_id,
             name=display_name or "Feishu User",
-            role="visitor",
             created_at=_utc_now(),
             updated_at=_utc_now(),
         )
@@ -391,6 +419,19 @@ class PostsRepository:
         self.session.flush()
         return tag
 
+    def _get_tags_by_names(self, names: list[str]) -> list[TagModel]:
+        normalized_names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
+        if not normalized_names:
+            return []
+        tags = self.session.scalars(
+            select(TagModel).where(
+                TagModel.tenant_id == DEFAULT_TENANT_ID,
+                TagModel.name.in_(normalized_names),
+            )
+        ).all()
+        tags_by_name = {tag.name: tag for tag in tags}
+        return [tags_by_name[name] for name in normalized_names]
+
     def _post_select(self):
         return select(PostModel).where(PostModel.archived_at.is_(None)).options(
             selectinload(PostModel.user),
@@ -454,7 +495,7 @@ class PostsRepository:
         return TagItem(id=tag.id, name=tag.name, slug=tag.slug, color=tag.color, is_public=tag.is_public)
 
     def _to_user_item(self, user: UserModel):
-        return {"id": user.id, "name": user.name, "role": user.role}
+        return {"id": user.id, "name": user.name}
 
     def _to_response_item(self, response: PostResponseModel):
         return {"text": response.text, "responded_at": response.responded_at, "user": self._to_user_item(response.user)}
@@ -474,7 +515,7 @@ class PostsRepository:
                 "需求状态已更新",
                 f"标题：{post.title}",
                 f"新状态：{NOTIFICATION_STATUS_LABELS.get(new_status, new_status)}",
-                f"管理员回复：{response_text.strip() or RESPONSE_FALLBACK}",
+                f"状态回复：{response_text.strip() or RESPONSE_FALLBACK}",
             ]
         )
         self._enqueue_notification(

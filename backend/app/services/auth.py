@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.clients.feishu import FeishuClient, FeishuProfile
-from app.core.config import settings
 from app.models.post import UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID
 
@@ -44,7 +43,6 @@ class AuthService:
                 external_id=profile.open_id,
                 feishu_open_id=profile.open_id,
                 name=profile_name or "Feishu User",
-                role="visitor",
             )
         user.external_id = profile.open_id
         user.feishu_open_id = profile.open_id
@@ -55,7 +53,6 @@ class AuthService:
         user.avatar_url = profile.avatar_url
         user.department_ids = ",".join(profile.department_ids)
         user.group_ids = ",".join(profile.group_ids)
-        user.role = "admin" if profile.open_id in settings.feishu_admin_open_ids else "visitor"
         self.session.add(user)
         self.session.commit()
         self.session.refresh(user)

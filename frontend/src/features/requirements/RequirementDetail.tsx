@@ -11,7 +11,9 @@ export function RequirementDetail({
   onStatusChange,
   onArchive,
   onOpenTask,
-  isAdmin,
+  onEdit,
+  canEdit,
+  canManage,
 }: {
   item: Requirement;
   isBusy: boolean;
@@ -20,7 +22,9 @@ export function RequirementDetail({
   onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   onOpenTask: (taskId: string) => void;
-  isAdmin: boolean;
+  onEdit: (item: Requirement) => void;
+  canEdit: boolean;
+  canManage: boolean;
 }) {
   return (
     <div className="detail-backdrop" role="presentation">
@@ -70,8 +74,13 @@ export function RequirementDetail({
               <strong>{item.vote_count}</strong>
               <small>{item.has_voted ? "已投票" : "票"}</small>
             </button>
-            {isAdmin ? (
-              <div className="admin-controls">
+            {canEdit ? (
+              <button className="secondary-button" type="button" onClick={() => onEdit(item)} disabled={isBusy}>
+                编辑需求
+              </button>
+            ) : null}
+            {canManage ? (
+              <div className="management-controls">
                 <label className="status-control">
                   <span>状态</span>
                   <select

@@ -47,14 +47,6 @@ def require_current_user(
     return user
 
 
-def require_admin_user(
-    user: UserModel = Depends(require_current_user),
-) -> UserModel:
-    if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required.")
-    return user
-
-
 def require_mutating_origin(request: Request) -> None:
     origin = request.headers.get("origin")
     if not is_origin_allowed(origin):

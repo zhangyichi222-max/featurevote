@@ -555,6 +555,10 @@ gap: 20px;
   width: min(560px, 100%);
 }
 
+.requirement-editor {
+width: min(720px, 100%);
+}
+
 .composer-panel label,
 .composer-panel .composer-field,
 .composer-panel .rich-field,
@@ -800,7 +804,7 @@ display: grid;
   gap: 16px;
 }
 
-.admin-controls {
+.management-controls {
 display: grid;
   gap: 12px;
 }
