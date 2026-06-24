@@ -28,10 +28,10 @@ export function RequirementDetail({
 }) {
   return (
     <div className="detail-backdrop" role="presentation">
-      <section className="detail-panel" aria-label="建议详情">
+      <section className="detail-panel" aria-label="需求草稿详情">
         <header className="detail-header">
           <button className="back-button" type="button" onClick={onClose}>
-            返回建议列表
+            返回需求草稿列表
           </button>
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
             x
@@ -76,7 +76,7 @@ export function RequirementDetail({
             </button>
             {canEdit ? (
               <button className="secondary-button" type="button" onClick={() => onEdit(item)} disabled={isBusy}>
-                编辑需求
+                编辑需求草稿
               </button>
             ) : null}
             {canManage ? (
@@ -95,7 +95,7 @@ export function RequirementDetail({
                   </select>
                 </label>
                 <button className="danger-button" type="button" onClick={() => onArchive(item.id)} disabled={isBusy}>
-                  删除建议
+                  删除需求草稿
                 </button>
               </div>
             ) : null}

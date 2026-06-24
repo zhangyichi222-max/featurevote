@@ -212,9 +212,9 @@ def test_import_sends_chat_summary_with_created_titles(monkeypatch: pytest.Monke
     assert len(feishu_client.sent_messages) == 1
     chat_id, summary = feishu_client.sent_messages[0]
     assert chat_id == "oc_test"
-    assert "FeatureVote 需求导入已完成" in summary
-    assert "新增需求：1" in summary
-    assert "新增需求标题：" in summary
+    assert "FeatureVote 需求草稿导入已完成" in summary
+    assert "新增需求草稿：1" in summary
+    assert "新增需求草稿标题：" in summary
     assert "- Export votes by department" in summary
 
 
@@ -337,7 +337,7 @@ def test_grouped_import_filters_only_definitely_invalid_messages(
         _message("om_recalled", text="This message was recalled", sent_at=start),
         _message(
             "om_summary",
-            text="FeatureVote 需求导入已完成\n读取消息：10",
+            text="FeatureVote 需求草稿导入已完成\n读取消息：10",
             sender_type="bot",
             sent_at=start,
         ),
@@ -440,7 +440,7 @@ def test_invalid_deepseek_candidate_is_logged_and_recorded_as_failed(
     assert stats.failed == 1
     assert record.status == "failed"
     assert "DeepSeek 返回格式无效" in caplog.text
-    assert "候选需求格式无效" in caplog.text
+    assert "候选需求草稿格式无效" in caplog.text
 
 
 def test_import_continues_pagination_after_fully_processed_page(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -606,7 +606,7 @@ def test_debug_logs_are_concise_and_hide_internal_ids(
     assert "第 1 页：文本消息 1 条，已处理 0 条，失败重试 0 条，本次新增 1 条" in output
     assert "历史消息读取完成：共 1 页，待处理 1 条" in output
     assert "正在分析第 1/1 组，共 1 条消息" in output
-    assert "DeepSeek 分析完成：模型未识别到需求" in output
+    assert "DeepSeek 分析完成：模型未识别到需求草稿" in output
     assert "om_secret_message_id" not in output
     assert "ou_secret_open_id" not in output
 
@@ -711,7 +711,7 @@ class CapturingGroupedDeepSeekClient(GroupedDeepSeekClient):
 class InvalidGroupedDeepSeekClient(FakeDeepSeekClient):
     async def summarize_feishu_requirements(self, messages: list[FeishuChatMessage]) -> list[FeishuRequirementDraft]:
         _ = messages
-        raise HTTPException(status_code=502, detail="候选需求格式无效")
+        raise HTTPException(status_code=502, detail="候选需求草稿格式无效")
 
 
 def _session():

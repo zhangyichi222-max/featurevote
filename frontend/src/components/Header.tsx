@@ -15,9 +15,9 @@ export function Header({
 }) {
   return (
     <header className="topbar">
-      <div className="brand-mark" aria-label="需求投票">
+      <div className="brand-mark" aria-label="需求草稿池">
         <span>需</span>
-        <strong>需求投票</strong>
+        <strong>需求草稿池</strong>
       </div>
       <div className="auth-controls">
         {currentUser ? (

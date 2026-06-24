@@ -12,7 +12,7 @@ export function SimilarRequirementPrompt({
   onOpenExisting: (id: string) => void;
 }) {
   if (isChecking && !items.length) {
-    return <div className="similar-suggestions-box muted">正在检查相似建议...</div>;
+    return <div className="similar-suggestions-box muted">正在检查相似需求草稿...</div>;
   }
   if (!items.length) {
     return null;
@@ -23,7 +23,7 @@ export function SimilarRequirementPrompt({
     <section className={`similar-suggestions-box ${hasHighSimilarity ? "strong" : ""}`}>
       <div className="similar-suggestions-header">
         <div>
-          <strong>{hasHighSimilarity ? "发现相似建议" : "相关建议"}</strong>
+          <strong>{hasHighSimilarity ? "发现相似需求草稿" : "相关需求草稿"}</strong>
           <span>{aiEnhanced ? "已结合 AI 判断" : "文本相似度匹配"}</span>
         </div>
       </div>
@@ -41,5 +41,4 @@ export function SimilarRequirementPrompt({
     </section>
   );
 }
-
 

@@ -83,14 +83,14 @@ class DeepSeekSuggestionClient:
                 {
                     "role": "system",
                     "content": (
-                        "你负责把同一时间窗口内的飞书聊天记录归纳成产品反馈看板中的投票需求。"
+                        "你负责把同一时间窗口内的飞书聊天记录归纳成需求草稿池中的可投票需求草稿。"
                         "必须综合整个对话窗口理解上下文，不能把每条消息孤立判断。"
                         "短句（例如“加一下”“这里”“可以吗”）必须结合前后消息理解。"
-                        "“生成一个需求”“希望”“需要”“能否支持”“是否可以”等明确意图必须输出候选需求。"
-                        "链接、路径、脚本名、命令和日志本身不是需求，但可能是相邻讨论的重要上下文，不得因此忽略整个窗口。"
+                        "“生成一个需求”“希望”“需要”“能否支持”“是否可以”等明确意图必须输出候选需求草稿。"
+                        "链接、路径、脚本名、命令和日志本身不是需求草稿，但可能是相邻讨论的重要上下文，不得因此忽略整个窗口。"
                         "请优先提炼用户问题、业务目标和期望结果。"
-                        "如果同一目标被多次讨论，只输出一个需求。"
-                        "如果内容不是需求、信息不足或只是闲聊/日志/命令输出，不要输出需求。"
+                        "如果同一目标被多次讨论，只输出一份需求草稿。"
+                        "如果内容不是需求、信息不足或只是闲聊/日志/命令输出，不要输出需求草稿。"
                         "默认使用简体中文。只返回严格 JSON，格式为："
                         '{"requirements":[{"title":"string","description":"问题：...\\n\\n场景：...\\n\\n期望结果：...",'
                         '"source_message_ids":["message_id"],"confidence":0.0}]}。'
@@ -99,7 +99,7 @@ class DeepSeekSuggestionClient:
                 {
                     "role": "user",
                     "content": (
-                        "请根据下面同一时间窗口内的飞书消息，按主题归纳出 0 到多个可投票需求。\n\n"
+                        "请根据下面同一时间窗口内的飞书消息，按主题归纳出 0 到多个可投票需求草稿。\n\n"
                         f"{window_text}"
                     ),
                 },
@@ -285,7 +285,7 @@ def _parse_feishu_requirement_drafts(content: str) -> list[FeishuRequirementDraf
             invalid_reasons.append(f"第 {index} 项字段无效：{field_errors or '未知字段'}")
             continue
     if invalid_reasons:
-        detail = f"DeepSeek 返回 {len(raw_requirements)} 个候选需求，其中 {len(invalid_reasons)} 个格式无效："
+        detail = f"DeepSeek 返回 {len(raw_requirements)} 个候选需求草稿，其中 {len(invalid_reasons)} 个格式无效："
         detail += "；".join(invalid_reasons[:5])
         if not drafts:
             raise HTTPException(
@@ -349,7 +349,7 @@ def _normalize_description(description: str) -> str:
         [
             f"问题：{fallback_problem}",
             "场景：请补充相关用户、操作流程和发生时机。",
-            "期望结果：请描述这个需求完成后应达到的效果。",
+            "期望结果：请描述这份需求草稿被采纳并完成后应达到的效果。",
         ]
     )
 

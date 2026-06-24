@@ -63,7 +63,7 @@ def test_normalize_description_rejects_extra_sections() -> None:
         "问题：管理员无法导出投票总数。 复盘会议需要人工整理报表。 "
         "管理员可以下载按部门分组的 CSV。 分析团队\n\n"
         "场景：请补充相关用户、操作流程和发生时机。\n\n"
-        "期望结果：请描述这个需求完成后应达到的效果。"
+        "期望结果：请描述这份需求草稿被采纳并完成后应达到的效果。"
     )
 
 
@@ -142,6 +142,7 @@ async def test_feishu_summary_prompt_requires_full_conversation_reasoning(
     assert "综合整个对话窗口理解上下文" in system_prompt
     assert "短句" in system_prompt
     assert "生成一个需求" in system_prompt
+    assert "候选需求草稿" in system_prompt
     assert message.text in user_prompt
     assert drafts[0].title == "从群组历史消息创建任务"
 

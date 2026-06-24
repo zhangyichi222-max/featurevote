@@ -52,7 +52,7 @@ export function RequirementBoard({
             <input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="搜索建议"
+              placeholder="搜索需求草稿"
             />
           </label>
           <select value={sortMode} onChange={(event) => onSortChange(event.target.value as SortMode)}>
@@ -69,8 +69,8 @@ export function RequirementBoard({
         ))}
         {!items.length ? (
           <div className="empty-state">
-            <strong>没有找到建议。</strong>
-            <span>换个筛选条件，或提交第一个想法。</span>
+            <strong>没有找到需求草稿。</strong>
+            <span>换个筛选条件，或提交第一份需求草稿。</span>
           </div>
         ) : null}
       </div>
@@ -125,5 +125,4 @@ function RequirementListItem({
     </article>
   );
 }
-
 

@@ -24,7 +24,7 @@ export function RequirementTaskModal({
   const defaultDescription = [
     item.description,
     "",
-    `来源需求：${item.req_id}`,
+    `来源需求草稿：${item.req_id}`,
     `当前票数：${item.vote_count}`,
     `提交人：${item.creator_name}`,
     `链接：/?post=${item.id}`,
@@ -32,7 +32,7 @@ export function RequirementTaskModal({
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(defaultDescription);
   const [assigneeId, setAssigneeId] = useState("");
-  const [labels, setLabels] = useState("需求转入");
+  const [labels, setLabels] = useState("草稿转入");
   const [assignees, setAssignees] = useState<CurrentUser[]>([]);
   const [error, setError] = useState("");
 
@@ -65,7 +65,7 @@ export function RequirementTaskModal({
       <form className="modal-panel conversion-panel" onSubmit={handleSubmit}>
         <div className="modal-header">
           <div>
-            <p className="eyebrow">转为任务</p>
+            <p className="eyebrow">采纳并创建任务</p>
             <h2>{item.req_id}</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
@@ -91,7 +91,7 @@ export function RequirementTaskModal({
         </label>
         <label>
           <span>标签</span>
-          <input value={labels} onChange={(event) => setLabels(event.target.value)} placeholder="需求转入, 前端" />
+          <input value={labels} onChange={(event) => setLabels(event.target.value)} placeholder="草稿转入, 前端" />
         </label>
         <div className="rich-field">
           <span>描述</span>
@@ -101,12 +101,11 @@ export function RequirementTaskModal({
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>取消</button>
           <button className="primary-button" type="submit" disabled={isBusy}>
-            {isBusy ? "创建中..." : "创建任务并开始处理"}
+            {isBusy ? "创建中..." : "采纳并创建任务"}
           </button>
         </div>
       </form>
     </Modal>
   );
 }
-
 

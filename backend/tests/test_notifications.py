@@ -27,7 +27,7 @@ def test_status_change_enqueues_creator_notification() -> None:
     assert task.event_type == "status_changed"
     assert task.recipient_open_id == "ou_creator"
     assert "Need exports" in task.message
-    assert "planned" in task.message
+    assert "新状态：已采纳" in task.message
     assert "We will plan this." in task.message
 
 
@@ -92,8 +92,8 @@ def test_completed_and_declined_notifications_use_product_status_labels() -> Non
     PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="declined", text="Not planned."), actor)
 
     messages = [task.message for task in session.scalars(select(NotificationTaskModel)).all()]
-    assert any("新状态：done" in message for message in messages)
-    assert any("新状态：rejected" in message for message in messages)
+    assert any("新状态：任务已完成" in message for message in messages)
+    assert any("新状态：未采纳" in message for message in messages)
 
 
 def test_duplicate_and_archive_do_not_enqueue_notifications() -> None:

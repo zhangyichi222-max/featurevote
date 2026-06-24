@@ -181,9 +181,9 @@ class FeishuRequirementImportService:
             return
         if settings.feishu_import_debug_logging:
             if drafts:
-                logger.info("DeepSeek 分析完成：识别到 %s 个需求（%s）", len(drafts), _drafts_preview(drafts))
+                logger.info("DeepSeek 分析完成：识别到 %s 个需求草稿（%s）", len(drafts), _drafts_preview(drafts))
             else:
-                logger.info("DeepSeek 分析完成：模型未识别到需求")
+                logger.info("DeepSeek 分析完成：模型未识别到需求草稿")
 
         for draft in drafts:
             source_messages = [
@@ -203,7 +203,7 @@ class FeishuRequirementImportService:
             if draft.confidence < settings.feishu_import_min_confidence:
                 if settings.feishu_import_debug_logging:
                     logger.info(
-                        "跳过低置信度需求：%s（置信度 %.2f）",
+                        "跳过低置信度需求草稿：%s（置信度 %.2f）",
                         draft.title,
                         draft.confidence,
                     )
@@ -307,7 +307,9 @@ class FeishuRequirementImportService:
         sender_type = (message.sender_type or "").lower()
         is_featurevote_summary = (
             sender_type in {"app", "bot"}
-            and cleaned_text.startswith("FeatureVote 需求导入已完成")
+            and cleaned_text.startswith(
+                ("FeatureVote 需求草稿导入已完成", "FeatureVote 需求导入已完成")
+            )
         )
         if is_featurevote_summary:
             if settings.feishu_import_debug_logging:
@@ -386,22 +388,22 @@ def _delta(before: FeishuImportRunResponse, after: FeishuImportRunResponse) -> F
 
 def _format_chat_summary(stats: FeishuImportRunResponse) -> str:
     lines = [
-        "FeatureVote 需求导入已完成",
+        "FeatureVote 需求草稿导入已完成",
         f"读取消息：{stats.fetched}",
-        f"新增需求：{stats.created}",
-        f"重复需求加票：{stats.voted}",
+        f"新增需求草稿：{stats.created}",
+        f"重复需求草稿加票：{stats.voted}",
         f"已投过票：{stats.already_voted}",
     ]
     if stats.failed:
         lines.append(f"处理失败：{stats.failed}")
     if stats.created_titles:
-        lines.append("新增需求标题：")
+        lines.append("新增需求草稿标题：")
         max_titles = 5
         for title in stats.created_titles[:max_titles]:
             lines.append(f"- {title}")
         remaining = len(stats.created_titles) - max_titles
         if remaining > 0:
-            lines.append(f"...还有 {remaining} 个新增需求")
+            lines.append(f"...还有 {remaining} 个新增需求草稿")
     return "\n".join(lines)
 
 

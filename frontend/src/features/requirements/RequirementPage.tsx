@@ -81,17 +81,17 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   }
 
   async function handleCreate(payload: { title: string; description: string; tags: string[] }) {
-    if (!requireLogin("提交建议")) {
+    if (!requireLogin("提交需求草稿")) {
       throw new Error("需要先登录。");
     }
     setIsBusy(true);
     try {
       await createRequirement(payload);
-      setNotice("建议已提交。");
+      setNotice("需求草稿已提交。");
       setIsComposerOpen(false);
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "建议提交失败。");
+      setNotice(error instanceof Error ? error.message : "需求草稿提交失败。");
       throw error;
     } finally {
       setIsBusy(false);
@@ -107,7 +107,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   }
 
   async function handleEdit(payload: { title: string; description: string; tags: string[] }) {
-    if (!editingItem || !requireLogin("编辑需求")) {
+    if (!editingItem || !requireLogin("编辑需求草稿")) {
       return;
     }
     setIsBusy(true);
@@ -115,9 +115,9 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
       await updateRequirement(editingItem.id, payload);
       await loadRequirements();
       setEditingItem(null);
-      setNotice("需求已更新。");
+      setNotice("需求草稿已更新。");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "需求保存失败。");
+      setNotice(error instanceof Error ? error.message : "需求草稿保存失败。");
       throw error;
     } finally {
       setIsBusy(false);
@@ -171,11 +171,11 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
     setIsBusy(true);
     try {
       const result = await convertRequirementToTask(conversionItem.id, payload);
-      setNotice(`已创建 TASK-${result.task.number}，需求已进入处理中。`);
+      setNotice(`已采纳需求草稿并创建 TASK-${result.task.number}。`);
       setConversionItem(null);
       await loadRequirements();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "转为任务失败。");
+      setNotice(error instanceof Error ? error.message : "采纳并创建任务失败。");
       throw error;
     } finally {
       setIsBusy(false);
@@ -192,17 +192,17 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   }
 
   async function handleArchive(requirementId: string) {
-    if (!requireLogin("删除建议")) {
+    if (!requireLogin("删除需求草稿")) {
       return;
     }
-    if (!window.confirm("确定删除这条建议吗？删除后前台列表将不再显示。")) {
+    if (!window.confirm("确定删除这份需求草稿吗？删除后草稿池将不再显示。")) {
       return;
     }
     setIsBusy(true);
     try {
       await archiveRequirement(requirementId);
       setSelectedId(null);
-      setNotice("建议已删除。");
+      setNotice("需求草稿已删除。");
       await loadRequirements();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "删除失败。");
@@ -219,13 +219,13 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
             className="new-suggestion-button"
             type="button"
             onClick={() => {
-              if (requireLogin("提交建议")) {
+              if (requireLogin("提交需求草稿")) {
                 setIsComposerOpen(true);
               }
             }}
           >
             <span className="plus-icon">+</span>
-            <span>你希望接下来做什么？</span>
+            <span>提交一份需求草稿</span>
           </button>
 
           <RequirementBoard

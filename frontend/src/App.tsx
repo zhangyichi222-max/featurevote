@@ -10,7 +10,7 @@ import { TaskPage } from "./features/tasks/TaskPage";
 import type { CurrentUser } from "./types/requirement";
 
 export default function App() {
-  const [notice, setNotice] = useState("正在加载建议...");
+  const [notice, setNotice] = useState("正在加载需求草稿...");
   const [isBusy, setIsBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);

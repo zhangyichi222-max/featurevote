@@ -90,7 +90,7 @@ class TasksRepository:
         )
         if existing is not None:
             if post.status != "in_progress":
-                self._set_post_status(post, "in_progress", "需求已关联任务，进入处理中。", actor)
+                self._set_post_status(post, "in_progress", "需求草稿已关联正式任务。", actor)
             self.session.commit()
             return post, self.get_task(existing.id)
 
@@ -109,7 +109,7 @@ class TasksRepository:
             updated_at=utc_now(),
         )
         task.labels = [self.ensure_label(label_name) for label_name in payload.labels]
-        self._set_post_status(post, "in_progress", "需求已转为任务，进入处理中。", actor)
+        self._set_post_status(post, "in_progress", "需求草稿已采纳并转为正式任务。", actor)
         self.session.add(task)
         self.session.flush()
         if task.assignee is not None:
@@ -258,7 +258,11 @@ class TasksRepository:
         if next_status is None or task.source_post.status == next_status:
             return
         actor = task.updated_by or task.created_by
-        text = "关联任务已完成，需求同步为已完成。" if next_status == "completed" else "关联任务已取消，需求同步为已拒绝。"
+        text = (
+            "关联任务已完成，需求草稿同步为任务已完成。"
+            if next_status == "completed"
+            else "关联任务已取消，需求草稿同步为未采纳。"
+        )
         self._set_post_status(task.source_post, next_status, text, actor)
 
     def _next_task_number(self) -> int:

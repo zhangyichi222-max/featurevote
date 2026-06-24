@@ -30,7 +30,14 @@ from app.schemas.post import (
 DEFAULT_TENANT_ID = "defaulttenant000000000000000000"
 NOTIFICATION_MAX_ATTEMPTS = 3
 NOTIFY_STATUS_VALUES = {"planned", "in_progress", "completed", "declined", "done", "rejected"}
-NOTIFICATION_STATUS_LABELS = {"completed": "done", "declined": "rejected"}
+NOTIFICATION_STATUS_LABELS = {
+    "open": "待评估",
+    "planned": "已采纳",
+    "in_progress": "已转任务",
+    "completed": "任务已完成",
+    "declined": "未采纳",
+    "duplicate": "重复草稿",
+}
 RESPONSE_FALLBACK = "\u6682\u65e0"
 
 
@@ -512,7 +519,7 @@ class PostsRepository:
     ) -> None:
         message = "\n".join(
             [
-                "需求状态已更新",
+                "需求草稿状态已更新",
                 f"标题：{post.title}",
                 f"新状态：{NOTIFICATION_STATUS_LABELS.get(new_status, new_status)}",
                 f"状态回复：{response_text.strip() or RESPONSE_FALLBACK}",

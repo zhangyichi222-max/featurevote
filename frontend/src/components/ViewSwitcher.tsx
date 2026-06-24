@@ -14,7 +14,7 @@ export function ViewSwitcher({
         type="button"
         onClick={() => onChange("requirements")}
       >
-        需求投票
+        需求草稿池
       </button>
       <button className={activeView === "tasks" ? "active" : ""} type="button" onClick={() => onChange("tasks")}>
         任务管理
@@ -22,5 +22,4 @@ export function ViewSwitcher({
     </nav>
   );
 }
-
 

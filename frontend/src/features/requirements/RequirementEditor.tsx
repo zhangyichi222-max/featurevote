@@ -34,7 +34,7 @@ export function RequirementEditor({
       nextErrors.title = "标题至少 3 个字。";
     }
     if (!trimmedDescription) {
-      nextErrors.description = "请补充需求描述。";
+      nextErrors.description = "请补充需求草稿描述。";
     }
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -55,7 +55,7 @@ export function RequirementEditor({
         setFieldErrors(saveError.fieldErrors);
         return;
       }
-      setError(saveError instanceof Error ? saveError.message : "需求保存失败。");
+      setError(saveError instanceof Error ? saveError.message : "需求草稿保存失败。");
     }
   }
 
@@ -64,7 +64,7 @@ export function RequirementEditor({
       <form className="modal-panel composer-panel requirement-editor" onSubmit={handleSubmit}>
         <div className="modal-header">
           <div>
-            <p className="eyebrow">编辑需求</p>
+            <p className="eyebrow">编辑需求草稿</p>
             <h2>{item.req_id}</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
@@ -89,7 +89,7 @@ export function RequirementEditor({
             className={fieldErrors.title ? "input-error" : ""}
           />
           <small className={fieldErrors.title ? "field-error" : "field-hint"}>
-            {fieldErrors.title || "至少 3 个字，让别人能快速理解这个需求。"}
+            {fieldErrors.title || "至少 3 个字，让别人能快速理解这份需求草稿。"}
           </small>
         </label>
 
@@ -129,7 +129,7 @@ export function RequirementEditor({
             取消
           </button>
           <button className="primary-button" type="submit" disabled={isBusy}>
-            {isBusy ? "保存中..." : "保存需求"}
+            {isBusy ? "保存中..." : "保存需求草稿"}
           </button>
         </div>
       </form>

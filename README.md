@@ -1,6 +1,8 @@
 # FeatureVote
 
-FeatureVote is a lightweight Fider-inspired feedback board built with React, FastAPI, and SQLAlchemy.
+FeatureVote is a lightweight requirement draft pool and task management app built with React, FastAPI, and SQLAlchemy.
+
+The requirement draft pool collects early ideas, votes, and evaluation feedback. Once a draft is accepted, it is converted into a formal task and tracked in task management. Converted drafts remain available for traceability.
 
 ## Structure
 
@@ -73,7 +75,7 @@ cd backend
 python -m alembic upgrade head
 ```
 
-Requirement status changes and task events enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
+Requirement draft status changes and task events enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
 
 ```bash
 cd backend
@@ -91,7 +93,7 @@ The one-shot command is still useful for manual retries. Watch mode keeps pollin
 
 ## Feishu Chat Import
 
-Configure one or more Feishu group chats for requirement import:
+Configure one or more Feishu group chats for requirement draft import:
 
 ```env
 FEISHU_IMPORT_CHAT_IDS=oc_xxx,oc_yyy
@@ -131,3 +133,5 @@ python scripts/import_feishu_messages.py --watch --interval 60
 ```
 
 Admins can also trigger one import pass with `POST /api/v1/feishu-import/run`.
+
+The existing `/posts`, requirement-oriented source directories, and database tables are retained as internal compatibility names. They represent requirement drafts in the product interface.

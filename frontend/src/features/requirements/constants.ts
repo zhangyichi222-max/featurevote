@@ -13,29 +13,29 @@ export const statusMeta: Record<
   }
 > = {
   backlog: {
-    label: "待收集",
+    label: "待评估",
     tone: "neutral",
-    response: "这个建议正在收集投票和讨论。",
+    response: "这份需求草稿正在收集投票和反馈，等待评估。",
   },
   approved: {
-    label: "已计划",
+    label: "已采纳",
     tone: "info",
-    response: "这个建议已有足够反馈，已进入规划。",
+    response: "这份需求草稿已被采纳，等待创建正式任务。",
   },
   in_progress: {
-    label: "进行中",
+    label: "已转任务",
     tone: "warning",
-    response: "团队正在处理这个建议。",
+    response: "这份需求草稿已转为正式任务，请在任务管理中跟踪进度。",
   },
   done: {
-    label: "已完成",
+    label: "任务已完成",
     tone: "success",
-    response: "这个建议已经上线或解决。",
+    response: "关联任务已完成，这份需求草稿保留用于追溯。",
   },
   rejected: {
-    label: "暂不采纳",
+    label: "未采纳",
     tone: "danger",
-    response: "这个建议暂不符合当前产品方向。",
+    response: "这份需求草稿当前未被采纳。",
   },
 };
 
@@ -43,11 +43,11 @@ export const statusOrder: RequirementStatus[] = ["backlog", "approved", "in_prog
 
 export const filterOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "all", label: "全部" },
-  { value: "backlog", label: "待收集" },
-  { value: "approved", label: "已计划" },
-  { value: "in_progress", label: "进行中" },
-  { value: "done", label: "已完成" },
-  { value: "rejected", label: "暂不采纳" },
+  { value: "backlog", label: "待评估" },
+  { value: "approved", label: "已采纳" },
+  { value: "in_progress", label: "已转任务" },
+  { value: "done", label: "任务已完成" },
+  { value: "rejected", label: "未采纳" },
 ];
 export const tagColors = ["#2f75d6", "#1f8a5b", "#b83245", "#8f5bd6", "#d68b2f"];
 
