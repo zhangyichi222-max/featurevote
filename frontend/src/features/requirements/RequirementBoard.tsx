@@ -1,54 +1,78 @@
 import { RichContentPreview } from "../rich-content/RichContentEditor";
-import type { Requirement } from "../../types/requirement";
+import type { Requirement, RequirementTag } from "../../types/requirement";
 import type { SortMode } from "./constants";
+
+export function RequirementFilters({
+  query,
+  sortMode,
+  label,
+  labels,
+  onQueryChange,
+  onSortChange,
+  onLabelChange,
+}: {
+  query: string;
+  sortMode: SortMode;
+  label: string;
+  labels: RequirementTag[];
+  onQueryChange: (value: string) => void;
+  onSortChange: (value: SortMode) => void;
+  onLabelChange: (value: string) => void;
+}) {
+  return (
+    <div className="requirement-filters">
+      <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="搜索需求草稿" />
+      <select value={sortMode} onChange={(event) => onSortChange(event.target.value as SortMode)}>
+        <option value="popular">热度最高</option>
+        <option value="recent">最近更新</option>
+        <option value="newest">最新提交</option>
+      </select>
+      <select value={label} onChange={(event) => onLabelChange(event.target.value)}>
+        <option value="">全部标签</option>
+        {labels.map((item) => (
+          <option key={item.id} value={item.slug}>{item.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export function RequirementBoard({
   items,
-  query,
-  sortMode,
-  onQueryChange,
-  onSortChange,
+  selectedItem,
   onSelect,
   onVote,
   canWrite,
 }: {
   items: Requirement[];
-  query: string;
-  sortMode: SortMode;
-  onQueryChange: (value: string) => void;
-  onSortChange: (value: SortMode) => void;
-  onSelect: (id: string) => void;
+  selectedItem: Requirement | null;
+  onSelect: (item: Requirement) => void;
   onVote: (id: string) => Promise<void>;
   canWrite: boolean;
 }) {
   return (
-    <div className="board-area">
-      <div className="filter-row">
-        <div className="search-sort-row">
-          <label className="search-box">
-            <span>搜索</span>
-            <input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="搜索需求草稿"
-            />
-          </label>
-          <select value={sortMode} onChange={(event) => onSortChange(event.target.value as SortMode)}>
-            <option value="popular">热度最高</option>
-            <option value="recent">最近更新</option>
-            <option value="newest">最新提交</option>
-          </select>
-        </div>
+    <div className="requirement-main-pane">
+      <div className="requirement-list-header">
+        <span>票数</span>
+        <span>需求草稿</span>
+        <span>提交人</span>
+        <span>标签</span>
       </div>
-
-      <div className="suggestion-list">
+      <div className="requirement-list">
         {items.map((item) => (
-          <RequirementListItem key={item.id} item={item} onSelect={onSelect} onVote={onVote} canWrite={canWrite} />
+          <RequirementListItem
+            key={item.id}
+            item={item}
+            isSelected={selectedItem?.id === item.id}
+            onSelect={onSelect}
+            onVote={onVote}
+            canWrite={canWrite}
+          />
         ))}
         {!items.length ? (
-          <div className="empty-state">
-            <strong>没有找到需求草稿。</strong>
-            <span>换个筛选条件，或提交第一份需求草稿。</span>
+          <div className="requirement-empty">
+            <strong>暂无需求草稿</strong>
+            <span>调整筛选条件，或新建一份需求草稿。</span>
           </div>
         ) : null}
       </div>
@@ -58,19 +82,21 @@ export function RequirementBoard({
 
 function RequirementListItem({
   item,
+  isSelected,
   onSelect,
   onVote,
   canWrite,
 }: {
   item: Requirement;
-  onSelect: (id: string) => void;
+  isSelected: boolean;
+  onSelect: (item: Requirement) => void;
   onVote: (id: string) => Promise<void>;
   canWrite: boolean;
 }) {
   return (
-    <article className="suggestion-item">
+    <div className={`requirement-row ${isSelected ? "selected" : ""}`}>
       <button
-        className="vote-box"
+        className={`requirement-vote ${item.has_voted ? "voted" : ""}`}
         type="button"
         onClick={() => onVote(item.id)}
         aria-label={canWrite ? "投票" : "登录后投票"}
@@ -78,25 +104,28 @@ function RequirementListItem({
       >
         <span>^</span>
         <strong>{item.vote_count}</strong>
-        <small>{item.has_voted ? "已投票" : "票"}</small>
       </button>
-      <button className="suggestion-content" type="button" onClick={() => onSelect(item.id)}>
-        <div className="suggestion-title-row">
-          <h2>{item.title}</h2>
-        </div>
-        <RichContentPreview markdown={item.description} className="suggestion-summary" />
+      <button className="requirement-row-content" type="button" onClick={() => onSelect(item)}>
+        <span className="requirement-title-cell">
+          <span>
+            <strong>{item.req_id}</strong>
+            <b>{item.title}</b>
+          </span>
+          <RichContentPreview markdown={item.description} className="requirement-summary" />
+        </span>
+        <span className="requirement-creator-cell">{item.creator_name}</span>
         {item.tags.length ? (
-          <span className="suggestion-tags">
+          <span className="requirement-labels">
             {item.tags.map((tag) => (
-              <small key={tag.slug} style={{ borderColor: tag.color }}>
+              <small key={tag.id} style={{ borderColor: tag.color }}>
                 <span className="label-dot" style={{ backgroundColor: tag.color }} />
                 {tag.name}
               </small>
             ))}
           </span>
-        ) : null}
+        ) : <span className="requirement-labels"><em>无</em></span>}
       </button>
-    </article>
+    </div>
   );
 }
 

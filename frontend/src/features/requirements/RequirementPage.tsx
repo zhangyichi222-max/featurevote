@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../../api/client";
 import type { CurrentUser, Requirement, RequirementTag } from "../../types/requirement";
 import { archiveRequirement, convertRequirementToTask, createRequirement, createTag, fetchRequirements, fetchTags, updateRequirement, voteRequirement } from "./api";
-import { RequirementBoard } from "./RequirementBoard";
+import { RequirementBoard, RequirementFilters } from "./RequirementBoard";
 import { RequirementComposer } from "./RequirementComposer";
 import { RequirementDetail } from "./RequirementDetail";
 import { RequirementEditor } from "./RequirementEditor";
@@ -16,6 +16,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
   const [items, setItems] = useState<Requirement[]>([]);
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("popular");
+  const [label, setLabel] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tags, setTags] = useState<RequirementTag[]>([]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
@@ -30,6 +31,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
   const visibleItems = useMemo(() => {
     const keyword = normalize(query);
     return items
+      .filter((item) => !label || item.tags.some((tag) => tag.slug === label))
       .filter((item) => {
         if (!keyword) {
           return true;
@@ -45,11 +47,12 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
         }
         return right.created_at.localeCompare(left.created_at);
       });
-  }, [items, query, sortMode]);
+  }, [items, label, query, sortMode]);
 
   async function loadRequirements() {
     const data = await fetchRequirements();
     setItems(data.items);
+    setSelectedId((current) => current && data.items.some((item) => item.id === current) ? current : null);
     setNotice("");
   }
 
@@ -177,10 +180,14 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
 
   return (
     <>
-      <section className="home-layout">
-        <section className="suggestions-column">
+      <section className="requirement-page">
+        <div className="requirement-toolbar">
+          <div>
+            <p className="eyebrow">需求草稿池</p>
+            <h2>待处理草稿</h2>
+          </div>
           <button
-            className="new-suggestion-button"
+            className="primary-button"
             type="button"
             onClick={() => {
               if (requireLogin("提交需求草稿")) {
@@ -188,21 +195,37 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
               }
             }}
           >
-            <span className="plus-icon">+</span>
-            <span>提交一份需求草稿</span>
+            新建草稿
           </button>
-
+        </div>
+        <RequirementFilters
+          query={query}
+          sortMode={sortMode}
+          label={label}
+          labels={tags}
+          onQueryChange={setQuery}
+          onSortChange={setSortMode}
+          onLabelChange={setLabel}
+        />
+        <div className="requirement-layout">
           <RequirementBoard
             items={visibleItems}
-            query={query}
-            sortMode={sortMode}
-            onQueryChange={setQuery}
-            onSortChange={setSortMode}
-            onSelect={setSelectedId}
+            selectedItem={selectedItem}
+            onSelect={(item) => setSelectedId(item.id)}
             onVote={handleVote}
             canWrite={Boolean(currentUser)}
           />
-        </section>
+          <RequirementDetail
+            item={selectedItem}
+            isBusy={isBusy}
+            onVote={handleVote}
+            onConvert={setConversionItem}
+            onArchive={handleArchive}
+            onEdit={setEditingItem}
+            canEdit={Boolean(currentUser)}
+            canManage={Boolean(currentUser)}
+          />
+        </div>
       </section>
 
       {isComposerOpen ? (
@@ -219,26 +242,13 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
         />
       ) : null}
 
-      {selectedItem ? (
-        <RequirementDetail
-          item={selectedItem}
-          isBusy={isBusy}
-          onClose={() => setSelectedId(null)}
-          onVote={handleVote}
-          onConvert={setConversionItem}
-          onArchive={handleArchive}
-          onEdit={setEditingItem}
-          canEdit={Boolean(currentUser)}
-          canManage={Boolean(currentUser)}
-        />
-      ) : null}
-
       {editingItem ? (
         <RequirementEditor
           item={editingItem}
           tags={tags}
           isBusy={isBusy}
           onClose={() => setEditingItem(null)}
+          onCreateTag={handleCreateTag}
           onSave={handleEdit}
         />
       ) : null}

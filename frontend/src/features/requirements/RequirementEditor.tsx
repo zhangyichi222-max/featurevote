@@ -11,19 +11,42 @@ export function RequirementEditor({
   tags,
   isBusy,
   onClose,
+  onCreateTag,
   onSave,
 }: {
   item: Requirement;
   tags: RequirementTag[];
   isBusy: boolean;
   onClose: () => void;
+  onCreateTag: (name: string) => Promise<RequirementTag[]>;
   onSave: (payload: { title: string; description: string; tags: string[] }) => Promise<void>;
 }) {
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description);
   const [selectedTags, setSelectedTags] = useState(item.tags.map((tag) => tag.name));
+  const [newTag, setNewTag] = useState("");
+  const [tagError, setTagError] = useState("");
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+
+  async function handleCreateTag() {
+    const name = newTag.trim();
+    if (!name || isCreatingTag) {
+      return;
+    }
+    setIsCreatingTag(true);
+    setTagError("");
+    try {
+      await onCreateTag(name);
+      setSelectedTags((current) => [...new Set([...current, name])]);
+      setNewTag("");
+    } catch (createError) {
+      setTagError(createError instanceof Error ? createError.message : "标签创建失败。");
+    } finally {
+      setIsCreatingTag(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -120,7 +143,26 @@ export function RequirementEditor({
               );
             }}
           />
-          <small className="field-hint">只能选择已有标签。</small>
+          <div className="new-label-row">
+            <input
+              value={newTag}
+              onChange={(event) => {
+                setNewTag(event.target.value);
+                setTagError("");
+              }}
+              placeholder="输入新标签"
+              maxLength={80}
+            />
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleCreateTag}
+              disabled={!newTag.trim() || isCreatingTag || isBusy}
+            >
+              {isCreatingTag ? "创建中..." : "新增标签"}
+            </button>
+          </div>
+          {tagError ? <small className="field-error">{tagError}</small> : null}
         </div>
 
         {error ? <div className="form-error">{error}</div> : null}
