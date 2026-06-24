@@ -90,6 +90,57 @@ def test_import_votes_for_duplicate_from_different_sender(monkeypatch: pytest.Mo
     assert record.post_id == original.id
 
 
+def test_import_without_sender_name_preserves_existing_user_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    existing = _add_user(session, "Existing Name", "ou_alice")
+    message = _message("om_no_name")
+    message = FeishuChatMessage(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        sender_open_id=message.sender_open_id,
+        sender_name=None,
+        sender_type=message.sender_type,
+        text=message.text,
+        sent_at=message.sent_at,
+    )
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=FakeDeepSeekClient(),
+    )
+
+    asyncio.run(service.import_configured_chats())
+
+    session.refresh(existing)
+    assert existing.name == "Existing Name"
+
+
+def test_import_with_sender_name_replaces_fallback_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    existing = _add_user(session, "Feishu User", "ou_alice")
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient([_message("om_named")]),
+        deepseek_client=FakeDeepSeekClient(),
+    )
+
+    asyncio.run(service.import_configured_chats())
+
+    session.refresh(existing)
+    assert existing.name == "Alice"
+
+
+def test_import_without_sender_name_uses_fallback_for_new_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    repository = PostsRepository(session)
+
+    user = repository.ensure_feishu_user("ou_new", None)
+
+    assert user.name == "Feishu User"
+
+
 def test_import_records_already_voted_for_same_sender(monkeypatch: pytest.MonkeyPatch) -> None:
     session = _session()
     _configure(monkeypatch, chat_ids=["oc_test"])

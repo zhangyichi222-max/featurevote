@@ -17,7 +17,7 @@ class FeishuClientError(RuntimeError):
 class FeishuProfile:
     open_id: str
     union_id: str | None
-    name: str
+    name: str | None
     email: str | None
     avatar_url: str | None
     department_ids: list[str]
@@ -79,7 +79,7 @@ class FeishuClient:
         return FeishuProfile(
             open_id=open_id,
             union_id=_first_str(source, "union_id"),
-            name=_first_str(source, "name", "display_name", "en_name") or "Feishu User",
+            name=_first_str(source, "name", "display_name", "en_name"),
             email=_first_str(source, "email"),
             avatar_url=_first_str(source, "avatar_url", "avatar_thumb"),
             department_ids=_string_list(source.get("department_ids") or source.get("department_id")),

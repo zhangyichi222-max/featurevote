@@ -30,6 +30,7 @@ class AuthService:
         return self.upsert_feishu_user(profile)
 
     def upsert_feishu_user(self, profile: FeishuProfile) -> UserModel:
+        profile_name = profile.name.strip() if profile.name and profile.name.strip() else None
         user = self.session.scalar(
             select(UserModel).where(
                 UserModel.tenant_id == DEFAULT_TENANT_ID,
@@ -42,13 +43,14 @@ class AuthService:
                 tenant_id=DEFAULT_TENANT_ID,
                 external_id=profile.open_id,
                 feishu_open_id=profile.open_id,
-                name=profile.name,
+                name=profile_name or "Feishu User",
                 role="visitor",
             )
         user.external_id = profile.open_id
         user.feishu_open_id = profile.open_id
         user.feishu_union_id = profile.union_id
-        user.name = profile.name
+        if profile_name is not None:
+            user.name = profile_name
         user.email = profile.email
         user.avatar_url = profile.avatar_url
         user.department_ids = ",".join(profile.department_ids)

@@ -304,9 +304,9 @@ class PostsRepository:
         user = self.session.scalar(
             select(UserModel).where(UserModel.tenant_id == DEFAULT_TENANT_ID, UserModel.feishu_open_id == open_id)
         )
-        display_name = name or "Feishu User"
+        display_name = name.strip() if name and name.strip() else None
         if user is not None:
-            if user.name != display_name:
+            if display_name is not None and user.name != display_name:
                 user.name = display_name
                 self.session.add(user)
                 self.session.flush()
@@ -317,7 +317,7 @@ class PostsRepository:
             tenant_id=DEFAULT_TENANT_ID,
             external_id=f"feishu:{open_id}",
             feishu_open_id=open_id,
-            name=display_name,
+            name=display_name or "Feishu User",
             role="visitor",
             created_at=_utc_now(),
             updated_at=_utc_now(),

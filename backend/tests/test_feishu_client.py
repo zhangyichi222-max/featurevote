@@ -63,6 +63,20 @@ def test_send_chat_text_message_posts_to_chat_id(monkeypatch: pytest.MonkeyPatch
     assert captured["payload"]["content"] == '{"text": "Import done"}'
 
 
+def test_get_profile_preserves_missing_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FeishuClient()
+    monkeypatch.setattr(
+        client,
+        "_get_json",
+        lambda url, token: {"code": 0, "data": {"open_id": "ou_test", "union_id": "on_test"}},
+    )
+
+    profile = client.get_profile("user-token")
+
+    assert profile.open_id == "ou_test"
+    assert profile.name is None
+
+
 def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FeishuClient()
     monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")
