@@ -237,7 +237,7 @@ def test_shared_label_migration_merges_task_labels_by_slug() -> None:
     assert len(link_rows) == 2
 
 
-def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
+def test_convert_post_to_task_is_idempotent_and_archives_source_post() -> None:
     session = make_session()
     actor = _add_user(session, "actor", "ou_actor")
     post = _add_post(session, actor)
@@ -256,11 +256,12 @@ def test_convert_post_to_task_is_idempotent_and_sets_post_in_progress() -> None:
 
     assert task.id == task_again.id
     assert task.source_post.id == post.id
-    assert session.get(PostModel, post.id).status == "in_progress"
+    assert session.get(PostModel, post.id).archived_at is not None
+    assert session.get(PostModel, post.id).archived_by_user_id == actor.id
     assert len(repo.list_tasks()) == 1
 
 
-def test_task_done_and_canceled_sync_source_post_status() -> None:
+def test_task_status_changes_do_not_modify_archived_source_post() -> None:
     session = make_session()
     actor = _add_user(session, "actor", "ou_actor")
     post = _add_post(session, actor)
@@ -270,22 +271,18 @@ def test_task_done_and_canceled_sync_source_post_status() -> None:
         TaskCreate(title="Ship export", description_markdown="From requirement"),
         actor,
     )
+
+    source = session.get(PostModel, post.id)
+    archived_at = source.archived_at
+    original_status = source.status
 
     repo.update_task(task.id, TaskUpdate(status="done"), actor)
-    assert session.get(PostModel, post.id).status == "completed"
-
-    other_post = _add_post(session, actor, title="Cancel export")
-    _other_post, other_task = repo.convert_post_to_task(
-        other_post.id,
-        TaskCreate(title="Cancel export", description_markdown="From requirement"),
-        actor,
-    )
-    repo.update_task(other_task.id, TaskUpdate(status="canceled"), actor)
-
-    assert session.get(PostModel, other_post.id).status == "declined"
+    session.refresh(source)
+    assert source.status == original_status
+    assert source.archived_at.replace(tzinfo=None) == archived_at.replace(tzinfo=None)
 
 
-def test_delete_task_archives_task_and_source_post() -> None:
+def test_delete_task_keeps_already_archived_source_post_for_traceability() -> None:
     session = make_session()
     actor = _add_user(session, "actor", "ou_actor")
     post = _add_post(session, actor)
@@ -296,12 +293,15 @@ def test_delete_task_archives_task_and_source_post() -> None:
         actor,
     )
 
+    source = session.get(PostModel, post.id)
+    archived_at = source.archived_at
     deleted = repo.delete_task(task.id, actor)
 
     assert deleted.id == task.id
     assert repo.get_task(task.id) is None
-    assert session.get(PostModel, post.id).archived_at is not None
-    assert session.get(PostModel, post.id).archived_by_user_id == actor.id
+    session.refresh(source)
+    assert source.archived_at.replace(tzinfo=None) == archived_at.replace(tzinfo=None)
+    assert source.archived_by_user_id == actor.id
 
 
 def test_upload_image_validation_and_storage() -> None:

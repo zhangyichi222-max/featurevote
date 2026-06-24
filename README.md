@@ -2,7 +2,7 @@
 
 FeatureVote is a lightweight requirement draft pool and task management app built with React, FastAPI, and SQLAlchemy.
 
-The requirement draft pool collects early ideas, votes, and evaluation feedback. Once a draft is accepted, it is converted into a formal task and tracked in task management. Converted drafts remain available for traceability.
+The requirement draft pool contains only drafts that have not yet become tasks. Once accepted, a draft is converted into a formal task and immediately removed from the pool. Its archived source record remains linked to the task for internal traceability.
 
 ## Structure
 
@@ -18,12 +18,12 @@ FeatureVote/
 
 The backend exposes a Fider-like product core under `/api/v1`:
 
-- `GET /posts` - list, search, and filter posts
+- `GET /posts` - list and search pending requirement drafts
 - `POST /posts` - create a post
 - `GET /posts/{post_id}` - fetch post detail
 - `PATCH /posts/{post_id}` - update post title, description, and existing tags
 - `POST /posts/{post_id}/vote` - vote with duplicate-vote protection
-- `POST /posts/{post_id}/response` - set status and staff response
+- `POST /posts/{post_id}/convert-to-task` - create a task and archive the source draft
 - `POST /posts/{post_id}/duplicate` - mark a post as duplicate
 - `POST /posts/{post_id}/moderation` - approve or reject a post
 - `GET /tags` and `POST /tags` - list and create tags
@@ -75,7 +75,7 @@ cd backend
 python -m alembic upgrade head
 ```
 
-Requirement draft status changes and task events enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
+Task events enqueue Feishu notification tasks. Delivery is processed separately so product actions are not blocked by Feishu failures:
 
 ```bash
 cd backend

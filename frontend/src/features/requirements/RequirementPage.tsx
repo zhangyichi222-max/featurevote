@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "../../api/client";
-import type { CurrentUser, Requirement, RequirementStatus, RequirementTag } from "../../types/requirement";
-import { archiveRequirement, convertRequirementToTask, createRequirement, createTag, fetchRequirements, fetchTags, updateRequirement, updateRequirementStatus, voteRequirement } from "./api";
+import type { CurrentUser, Requirement, RequirementTag } from "../../types/requirement";
+import { archiveRequirement, convertRequirementToTask, createRequirement, createTag, fetchRequirements, fetchTags, updateRequirement, voteRequirement } from "./api";
 import { RequirementBoard } from "./RequirementBoard";
 import { RequirementComposer } from "./RequirementComposer";
 import { RequirementDetail } from "./RequirementDetail";
 import { RequirementEditor } from "./RequirementEditor";
 import { RequirementTaskModal } from "./RequirementTaskModal";
-import type { SortMode, StatusFilter } from "./constants";
-import { statusMeta, statusOrder, tagColors } from "./constants";
+import type { SortMode } from "./constants";
+import { tagColors } from "./constants";
 import { normalize } from "./utils";
 
-export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onOpenTasks }: { currentUser: CurrentUser | null; isBusy: boolean; setIsBusy: (value: boolean) => void; setNotice: (value: string) => void; onOpenTasks: () => void; }) {
+export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: { currentUser: CurrentUser | null; isBusy: boolean; setIsBusy: (value: boolean) => void; setNotice: (value: string) => void; }) {
   const [items, setItems] = useState<Requirement[]>([]);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -31,7 +30,6 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
   const visibleItems = useMemo(() => {
     const keyword = normalize(query);
     return items
-      .filter((item) => statusFilter === "all" || item.status === statusFilter)
       .filter((item) => {
         if (!keyword) {
           return true;
@@ -47,14 +45,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
         }
         return right.created_at.localeCompare(left.created_at);
       });
-  }, [items, query, sortMode, statusFilter]);
-
-  const counts = useMemo(() => {
-    return statusOrder.reduce<Record<RequirementStatus, number>>((result, status) => {
-      result[status] = items.filter((item) => item.status === status).length;
-      return result;
-    }, {} as Record<RequirementStatus, number>);
-  }, [items]);
+  }, [items, query, sortMode]);
 
   async function loadRequirements() {
     const data = await fetchRequirements();
@@ -140,25 +131,6 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
     }
   }
 
-  async function handleStatusChange(requirementId: string, status: RequirementStatus) {
-    if (!requireLogin("修改状态")) {
-      return;
-    }
-    const item = items.find((entry) => entry.id === requirementId);
-    if (status === "in_progress" && item && !item.linked_task) {
-      setConversionItem(item);
-      return;
-    }
-    setIsBusy(true);
-    try {
-      await updateRequirementStatus(requirementId, { status });
-      setNotice(`状态已改为${statusMeta[status].label}。`);
-      await loadRequirements();
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
   async function handleConvertToTask(payload: {
     title: string;
     description_markdown: string;
@@ -173,6 +145,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
       const result = await convertRequirementToTask(conversionItem.id, payload);
       setNotice(`已采纳需求草稿并创建 TASK-${result.task.number}。`);
       setConversionItem(null);
+      setSelectedId(null);
       await loadRequirements();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "采纳并创建任务失败。");
@@ -180,15 +153,6 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
     } finally {
       setIsBusy(false);
     }
-  }
-
-  function openLinkedTask(taskId: string) {
-    const params = new URLSearchParams(window.location.search);
-    params.set("view", "tasks");
-    params.set("task", taskId);
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-    onOpenTasks();
-    setSelectedId(null);
   }
 
   async function handleArchive(requirementId: string) {
@@ -231,11 +195,8 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
           <RequirementBoard
             items={visibleItems}
             query={query}
-            statusFilter={statusFilter}
             sortMode={sortMode}
-            counts={counts}
             onQueryChange={setQuery}
-            onStatusFilterChange={setStatusFilter}
             onSortChange={setSortMode}
             onSelect={setSelectedId}
             onVote={handleVote}
@@ -264,9 +225,8 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice, onO
           isBusy={isBusy}
           onClose={() => setSelectedId(null)}
           onVote={handleVote}
-          onStatusChange={handleStatusChange}
+          onConvert={setConversionItem}
           onArchive={handleArchive}
-          onOpenTask={openLinkedTask}
           onEdit={setEditingItem}
           canEdit={Boolean(currentUser)}
           canManage={Boolean(currentUser)}

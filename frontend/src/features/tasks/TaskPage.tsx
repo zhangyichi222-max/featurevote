@@ -111,8 +111,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   }
 
   async function handleDeleteTask(task: TaskItem) {
-    const sourceMessage = task.source_post ? "，并同步删除关联需求草稿" : "";
-    if (!window.confirm(`确定删除 TASK-${task.number}${sourceMessage}吗？`)) {
+    if (!window.confirm(`确定删除 TASK-${task.number} 吗？`)) {
       return;
     }
     setIsBusy(true);
@@ -125,7 +124,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       }
       setSelectedTask(null);
       await loadTasks();
-      setNotice(task.source_post ? "任务已删除，关联需求草稿已同步删除。" : "任务已删除。");
+      setNotice("任务已删除。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "任务删除失败。");
     } finally {

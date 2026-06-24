@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from app.models.post import NotificationTaskModel, PostModel, PostResponseModel, TagModel, TaskModel, UserModel, utc_now
+from app.models.post import NotificationTaskModel, PostModel, TagModel, TaskModel, UserModel, utc_now
 from app.repositories.posts import DEFAULT_TENANT_ID
 from app.schemas.post import UserItem
 from app.schemas.task import TaskCreate, TaskItem, TaskLabelCreate, TaskLabelItem, TaskUpdate
@@ -77,22 +77,19 @@ class TasksRepository:
         return self.get_task(task.id)
 
     def convert_post_to_task(self, post_id: str, payload: TaskCreate, actor: UserModel) -> tuple[object | None, TaskItem | None]:
-        post = self._get_active_post(post_id)
-        if post is None:
-            return None, None
-
         existing = self.session.scalar(
             select(TaskModel).where(
                 TaskModel.tenant_id == DEFAULT_TENANT_ID,
-                TaskModel.source_post_id == post.id,
+                TaskModel.source_post_id == post_id,
                 TaskModel.archived_at.is_(None),
             )
         )
         if existing is not None:
-            if post.status != "in_progress":
-                self._set_post_status(post, "in_progress", "需求草稿已关联正式任务。", actor)
-            self.session.commit()
-            return post, self.get_task(existing.id)
+            return existing.source_post, self.get_task(existing.id)
+
+        post = self._get_active_post(post_id)
+        if post is None:
+            return None, None
 
         task = TaskModel(
             id=uuid4().hex,
@@ -109,8 +106,12 @@ class TasksRepository:
             updated_at=utc_now(),
         )
         task.labels = [self.ensure_label(label_name) for label_name in payload.labels]
-        self._set_post_status(post, "in_progress", "需求草稿已采纳并转为正式任务。", actor)
+        converted_at = utc_now()
+        post.archived_at = converted_at
+        post.archived_by_user_id = actor.id
+        post.updated_at = converted_at
         self.session.add(task)
+        self.session.add(post)
         self.session.flush()
         if task.assignee is not None:
             self._enqueue_task_assignment_notification(task, task.assignee)
@@ -149,7 +150,6 @@ class TasksRepository:
             self._enqueue_task_assignment_notification(task, task.assignee)
         if payload.status is not None and task.status != previous_status:
             self._enqueue_task_status_notification(task, previous_status, task.status)
-            self._sync_source_post_status(task)
 
         self.session.commit()
         return self.get_task(task.id)
@@ -164,12 +164,6 @@ class TasksRepository:
         task.archived_at = deleted_at
         task.updated_by_user_id = user.id
         task.updated_at = deleted_at
-
-        if task.source_post is not None and task.source_post.archived_at is None:
-            task.source_post.archived_at = deleted_at
-            task.source_post.archived_by_user_id = user.id
-            task.source_post.updated_at = deleted_at
-            self.session.add(task.source_post)
 
         self.session.add(task)
         self.session.commit()
@@ -233,37 +227,6 @@ class TasksRepository:
                 PostModel.status != "duplicate",
             )
         )
-
-    def _set_post_status(self, post: PostModel, status: str, text: str, user: UserModel) -> None:
-        post.status = status
-        post.updated_at = utc_now()
-        if post.response is None:
-            post.response = PostResponseModel(
-                id=uuid4().hex,
-                post_id=post.id,
-                user_id=user.id,
-                text=text,
-                responded_at=utc_now(),
-            )
-        else:
-            post.response.text = text
-            post.response.user_id = user.id
-            post.response.responded_at = utc_now()
-        self.session.add(post)
-
-    def _sync_source_post_status(self, task: TaskModel) -> None:
-        if task.source_post is None or task.source_post.archived_at is not None or task.source_post.status == "duplicate":
-            return
-        next_status = {"done": "completed", "canceled": "declined"}.get(task.status)
-        if next_status is None or task.source_post.status == next_status:
-            return
-        actor = task.updated_by or task.created_by
-        text = (
-            "关联任务已完成，需求草稿同步为任务已完成。"
-            if next_status == "completed"
-            else "关联任务已取消，需求草稿同步为未采纳。"
-        )
-        self._set_post_status(task.source_post, next_status, text, actor)
 
     def _next_task_number(self) -> int:
         value = self.session.scalar(

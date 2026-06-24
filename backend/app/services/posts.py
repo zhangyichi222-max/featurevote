@@ -11,7 +11,6 @@ from app.schemas.post import (
     PostItem,
     PostListResponse,
     PostUpdate,
-    StatusResponseUpdate,
     TagCreate,
     TagListResponse,
     VoteCreate,
@@ -25,7 +24,6 @@ class PostsService:
     async def list_posts(
         self,
         query: str = "",
-        statuses: list[str] | None = None,
         tags: list[str] | None = None,
         moderation: str = "",
         view: str = "trending",
@@ -33,7 +31,6 @@ class PostsService:
         return PostListResponse(
             items=self.repository.list_posts(
                 query=query,
-                statuses=statuses,
                 tags=tags,
                 moderation=moderation,
                 view=view,
@@ -81,10 +78,6 @@ class PostsService:
     async def create_tag(self, payload: TagCreate) -> ActionResult:
         self.repository.create_tag(payload)
         return ActionResult(message="Tag created successfully.")
-
-    async def set_response(self, post_id: str, payload: StatusResponseUpdate, actor: UserModel) -> PostItem:
-        await self.get_post(post_id)
-        return self.repository.set_response(post_id, payload, actor)
 
     async def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, actor: UserModel) -> PostItem:
         if post_id == payload.original_post_id:

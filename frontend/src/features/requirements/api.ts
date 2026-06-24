@@ -2,7 +2,6 @@ import { apiClient } from "../../api/client";
 import type {
   CurrentUser,
   RequirementListResponse,
-  RequirementStatus,
   SimilarRequirementsResponse,
 } from "../../types/requirement";
 
@@ -35,31 +34,6 @@ type PostListResponse = {
   items: PostItem[];
 };
 
-const statusToPostStatus: Record<RequirementStatus, PostStatus> = {
-  backlog: "open",
-  approved: "planned",
-  in_progress: "in_progress",
-  done: "completed",
-  rejected: "declined",
-};
-
-const postStatusToStatus: Record<PostStatus, RequirementStatus> = {
-  open: "backlog",
-  planned: "approved",
-  in_progress: "in_progress",
-  completed: "done",
-  declined: "rejected",
-  duplicate: "rejected",
-};
-
-const statusResponseText: Record<RequirementStatus, string> = {
-  backlog: "这份需求草稿正在收集投票和反馈，等待评估。",
-  approved: "这份需求草稿已被采纳，等待创建正式任务。",
-  in_progress: "这份需求草稿已转为正式任务，请在任务管理中跟踪进度。",
-  done: "关联任务已完成，这份需求草稿保留用于追溯。",
-  rejected: "这份需求草稿当前未被采纳。",
-};
-
 export async function fetchRequirements() {
   const data = await apiClient.get<PostListResponse>("/posts");
   return {
@@ -68,7 +42,6 @@ export async function fetchRequirements() {
       req_id: `POST-${item.number}`,
       title: item.title,
       description: item.description,
-      status: postStatusToStatus[item.status],
       vote_count: item.votes_count,
       has_voted: Boolean(item.has_voted),
       creator_name: item.user.name,
@@ -127,19 +100,6 @@ export async function voteRequirement(requirementId: string) {
   return apiClient.post<{ success: boolean; message: string }>(`/posts/${requirementId}/vote`);
 }
 
-export async function updateRequirementStatus(
-  requirementId: string,
-  payload: { status: RequirementStatus },
-) {
-  return apiClient.post<{ id: string }>(
-    `/posts/${requirementId}/response`,
-    {
-      status: statusToPostStatus[payload.status],
-      text: statusResponseText[payload.status],
-    },
-  );
-}
-
 export async function convertRequirementToTask(
   requirementId: string,
   payload: {
@@ -149,7 +109,7 @@ export async function convertRequirementToTask(
     labels: string[];
   },
 ) {
-  return apiClient.post<{ post: PostItem; task: { id: string; number: number; title: string; status: string } }>(
+  return apiClient.post<{ task: { id: string; number: number; title: string; status: string } }>(
     `/posts/${requirementId}/convert-to-task`,
     {
       ...payload,

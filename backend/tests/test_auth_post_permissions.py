@@ -242,14 +242,6 @@ def test_logged_in_user_can_manage_posts(client: TestClient) -> None:
     voted = client.post(f"/api/v1/posts/{post_id}/vote", json={}, cookies=cookies, headers=headers)
     assert voted.status_code == 200
 
-    status_updated = client.post(
-        f"/api/v1/posts/{post_id}/response",
-        json={"status": "planned", "text": "Planning"},
-        cookies=cookies,
-        headers=headers,
-    )
-    assert status_updated.status_code == 200
-
     converted = client.post(
         f"/api/v1/posts/{post_id}/convert-to-task",
         json={"title": "Need export", "description_markdown": "Work item", "labels": ["需求转入"]},
@@ -284,19 +276,22 @@ def test_logged_in_user_can_convert_post_to_task(client: TestClient) -> None:
 
     assert converted.status_code == 200
     assert converted.json()["task"]["number"] == 1
-    assert converted.json()["post"]["status"] == "in_progress"
-    assert converted.json()["post"]["linked_task"]["id"] == converted.json()["task"]["id"]
+    task_id = converted.json()["task"]["id"]
+    assert converted.json()["task"]["source_post"]["id"] == post_id
 
-    edited = client.patch(
-        f"/api/v1/posts/{post_id}",
-        json={"title": "Updated after conversion"},
-        cookies=_cookies("other-user"),
+    converted_again = client.post(
+        f"/api/v1/posts/{post_id}/convert-to-task",
+        json={"title": "Duplicate attempt", "description_markdown": "Should reuse task", "labels": []},
+        cookies=_cookies("actor-user"),
         headers=headers,
     )
-    assert edited.status_code == 200
-    assert edited.json()["status"] == "in_progress"
-    assert edited.json()["linked_task"]["id"] == converted.json()["task"]["id"]
+    assert converted_again.status_code == 200
+    assert converted_again.json()["task"]["id"] == task_id
 
+    assert client.get(f"/api/v1/posts/{post_id}").status_code == 404
+    listed = client.get("/api/v1/posts")
+    assert listed.status_code == 200
+    assert all(item["id"] != post_id for item in listed.json()["items"])
 
 def test_logged_in_user_can_archive_and_normal_reads_hide_archived_post(client: TestClient) -> None:
     headers = {"Origin": "http://localhost:5173"}

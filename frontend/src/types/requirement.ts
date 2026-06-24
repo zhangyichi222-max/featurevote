@@ -1,4 +1,3 @@
-export type RequirementStatus = "backlog" | "approved" | "in_progress" | "done" | "rejected";
 export interface CurrentUser {
   id: string;
   name: string;
@@ -16,7 +15,6 @@ export interface Requirement {
   req_id: string;
   title: string;
   description: string;
-  status: RequirementStatus;
   vote_count: number;
   has_voted: boolean;
   creator_name: string;

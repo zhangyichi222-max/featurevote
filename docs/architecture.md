@@ -25,7 +25,7 @@ frontend/
 │   ├── api/                  # HTTP 请求封装
 │   ├── components/           # 通用组件
 │   ├── features/
-│   │   └── requirements/     # 需求草稿池、提交、投票、评估和转任务
+│   │   └── requirements/     # 待处理需求草稿、提交、投票和转任务
 │   ├── hooks/                # 状态和请求 hooks
 │   ├── pages/                # 页面层
 │   ├── types/                # 前端类型定义
@@ -63,8 +63,8 @@ backend/
 ### 模块职责
 
 - `api`: 暴露 REST 接口
-- `schemas`: 定义需求草稿、投票和状态更新数据结构
-- `services`: 处理投票去重、票数更新、状态变更
+- `schemas`: 定义需求草稿、投票和转任务数据结构
+- `services`: 处理投票去重、票数更新和草稿转任务
 - `repositories`: 封装 SQLite 读写细节，便于未来替换数据库
 
 ## 4. 数据流
@@ -83,20 +83,19 @@ backend/
 3. 未投票则新增 `votes` 记录
 4. 更新 `requirements.vote_count`
 
-### 状态更新
+### 转为任务
 
-1. 登录用户更新状态
-2. 后端写回需求草稿状态
-3. 前端重新拉取最新数据
-
-需求草稿状态在界面中依次表达为“待评估、已采纳、已转任务、任务已完成、未采纳”。草稿被采纳后创建正式任务，执行进度在任务管理中维护；草稿记录继续保留，用于追溯来源、投票和关联关系。
+1. 登录用户在草稿详情中选择“采纳并创建任务”
+2. 后端在同一事务中创建任务并软归档来源草稿
+3. 草稿立即从草稿池、搜索和相似草稿候选中移除
+4. 任务保留来源草稿关联，后续状态只在任务管理中维护
 
 ## 5. 兼容接口
 
 - `POST /api/v1/requirements`
 - `GET /api/v1/requirements`
 - `POST /api/v1/requirements/{id}/vote`
-- `POST /api/v1/requirements/{id}/status`
+- `POST /api/v1/requirements/{id}/convert-to-task`
 
 当前实际实现继续保留 `/posts` 等历史兼容命名，本次产品重命名不修改 API 路径、数据库表或内部代码目录。
 

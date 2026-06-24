@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import (
     FeishuImportedMessageModel,
-    NotificationTaskModel,
     PostModel,
     PostResponseModel,
     TagModel,
@@ -21,26 +20,12 @@ from app.schemas.post import (
     PostCreate,
     PostItem,
     PostUpdate,
-    StatusResponseUpdate,
     TagCreate,
     TagItem,
     VoteCreate,
 )
 
 DEFAULT_TENANT_ID = "defaulttenant000000000000000000"
-NOTIFICATION_MAX_ATTEMPTS = 3
-NOTIFY_STATUS_VALUES = {"planned", "in_progress", "completed", "declined", "done", "rejected"}
-NOTIFICATION_STATUS_LABELS = {
-    "open": "待评估",
-    "planned": "已采纳",
-    "in_progress": "已转任务",
-    "completed": "任务已完成",
-    "declined": "未采纳",
-    "duplicate": "重复草稿",
-}
-RESPONSE_FALLBACK = "\u6682\u65e0"
-
-
 class PostsRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -83,15 +68,11 @@ class PostsRepository:
     def list_posts(
         self,
         query: str = "",
-        statuses: list[str] | None = None,
         tags: list[str] | None = None,
         moderation: str = "",
         view: str = "trending",
     ) -> list[PostItem]:
         statement = self._post_select()
-
-        if statuses:
-            statement = statement.where(PostModel.status.in_(statuses))
 
         if query:
             term = f"%{query.strip().lower()}%"
@@ -212,29 +193,6 @@ class PostsRepository:
         tag = self.ensure_tag(payload.name, color=payload.color, is_public=payload.is_public)
         self.session.commit()
         return self._to_tag_item(tag)
-
-    def set_response(self, post_id: str, payload: StatusResponseUpdate, actor: UserModel) -> PostItem:
-        post = self.get_active_post_model(post_id)
-        previous_status = post.status
-        post.status = payload.status
-        post.updated_at = _utc_now()
-        if post.response is None:
-            post.response = PostResponseModel(
-                id=uuid4().hex,
-                post_id=post_id,
-                user_id=actor.id,
-                text=payload.text,
-                responded_at=_utc_now(),
-            )
-        else:
-            post.response.text = payload.text
-            post.response.user_id = actor.id
-            post.response.responded_at = _utc_now()
-        if previous_status != payload.status and payload.status in NOTIFY_STATUS_VALUES:
-            self._enqueue_status_notification(post, previous_status, payload.status, payload.text)
-        self.session.add(post)
-        self.session.commit()
-        return self.get_post(post_id)
 
     def mark_duplicate(self, post_id: str, payload: DuplicateUpdate, actor: UserModel) -> PostItem:
         post = self.get_active_post_model(post_id)
@@ -509,53 +467,6 @@ class PostsRepository:
 
     def _to_linked_task_item(self, task):
         return {"id": task.id, "number": task.number, "title": task.title, "status": task.status}
-
-    def _enqueue_status_notification(
-        self,
-        post: PostModel,
-        previous_status: str,
-        new_status: str,
-        response_text: str,
-    ) -> None:
-        message = "\n".join(
-            [
-                "需求草稿状态已更新",
-                f"标题：{post.title}",
-                f"新状态：{NOTIFICATION_STATUS_LABELS.get(new_status, new_status)}",
-                f"状态回复：{response_text.strip() or RESPONSE_FALLBACK}",
-            ]
-        )
-        self._enqueue_notification(
-            post=post,
-            event_type="status_changed",
-            dedupe_key=f"status:{previous_status}:{new_status}",
-            message=message,
-        )
-
-    def _enqueue_notification(self, post: PostModel, event_type: str, dedupe_key: str, message: str) -> None:
-        task = NotificationTaskModel(
-            id=uuid4().hex,
-            tenant_id=post.tenant_id,
-            post_id=post.id,
-            user_id=post.user_id,
-            recipient_open_id=post.user.feishu_open_id if post.user else None,
-            event_type=event_type,
-            dedupe_key=dedupe_key,
-            message=message,
-            status="pending",
-            attempts=0,
-            max_attempts=NOTIFICATION_MAX_ATTEMPTS,
-            created_at=_utc_now(),
-            updated_at=_utc_now(),
-        )
-        nested = self.session.begin_nested()
-        try:
-            self.session.add(task)
-            self.session.flush()
-            nested.commit()
-        except IntegrityError:
-            nested.rollback()
-
 
 def seed_default_data(session: Session) -> None:
     PostsRepository(session).ensure_seed_data()

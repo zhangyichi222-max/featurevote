@@ -1,16 +1,13 @@
 import { RichContentPreview } from "../rich-content/RichContentEditor";
-import type { Requirement, RequirementStatus } from "../../types/requirement";
-import { statusMeta, statusOrder } from "./constants";
-import { StatusLozenge } from "./StatusLozenge";
+import type { Requirement } from "../../types/requirement";
 
 export function RequirementDetail({
   item,
   isBusy,
   onClose,
   onVote,
-  onStatusChange,
+  onConvert,
   onArchive,
-  onOpenTask,
   onEdit,
   canEdit,
   canManage,
@@ -19,9 +16,8 @@ export function RequirementDetail({
   isBusy: boolean;
   onClose: () => void;
   onVote: (id: string) => Promise<void>;
-  onStatusChange: (id: string, status: RequirementStatus) => Promise<void>;
+  onConvert: (item: Requirement) => void;
   onArchive: (id: string) => Promise<void>;
-  onOpenTask: (taskId: string) => void;
   onEdit: (item: Requirement) => void;
   canEdit: boolean;
   canManage: boolean;
@@ -40,15 +36,7 @@ export function RequirementDetail({
 
         <div className="detail-layout">
           <article className="detail-main">
-            <StatusLozenge status={item.status} />
             <h2>{item.title}</h2>
-            {item.linked_task ? (
-              <button className="linked-task-card" type="button" onClick={() => onOpenTask(item.linked_task!.id)}>
-                <span>关联任务</span>
-                <strong>TASK-{item.linked_task.number}</strong>
-                <small>{item.linked_task.title}</small>
-              </button>
-            ) : null}
             <RichContentPreview markdown={item.description} className="detail-description" />
             {item.tags.length ? (
               <div className="suggestion-tags detail-tags" aria-label="标签">
@@ -60,11 +48,6 @@ export function RequirementDetail({
                 ))}
               </div>
             ) : null}
-
-            <section className="response-box">
-              <h3>状态回复</h3>
-              <p>{statusMeta[item.status].response}</p>
-            </section>
 
           </article>
 
@@ -81,19 +64,9 @@ export function RequirementDetail({
             ) : null}
             {canManage ? (
               <div className="management-controls">
-                <label className="status-control">
-                  <span>状态</span>
-                  <select
-                    value={item.status}
-                    onChange={(event) => onStatusChange(item.id, event.target.value as RequirementStatus)}
-                  >
-                    {statusOrder.map((status) => (
-                      <option key={status} value={status}>
-                        {statusMeta[status].label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <button className="primary-button" type="button" onClick={() => onConvert(item)} disabled={isBusy}>
+                  采纳并创建任务
+                </button>
                 <button className="danger-button" type="button" onClick={() => onArchive(item.id)} disabled={isBusy}>
                   删除需求草稿
                 </button>

@@ -10,7 +10,6 @@ from app.schemas.post import (
     PostItem,
     PostListResponse,
     PostUpdate,
-    StatusResponseUpdate,
     TagCreate,
     TagListResponse,
     VoteCreate,
@@ -27,13 +26,12 @@ tags_router = APIRouter(prefix="/tags", tags=["tags"])
 @router.get("", response_model=PostListResponse)
 async def list_posts(
     query: str = "",
-    statuses: list[str] | None = Query(default=None),
     tags: list[str] | None = Query(default=None),
     moderation: str = "",
     view: str = "trending",
     service: PostsService = Depends(get_posts_service),
 ) -> PostListResponse:
-    return await service.list_posts(query=query, statuses=statuses, tags=tags, moderation=moderation, view=view)
+    return await service.list_posts(query=query, tags=tags, moderation=moderation, view=view)
 
 
 @router.post("", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])
@@ -70,27 +68,15 @@ async def vote_post(
     return await service.vote_post(post_id, user)
 
 
-@router.post("/{post_id}/response", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])
-async def set_response(
-    post_id: str,
-    payload: StatusResponseUpdate,
-    service: PostsService = Depends(get_posts_service),
-    user: UserModel = Depends(require_current_user),
-) -> PostItem:
-    return await service.set_response(post_id, payload, user)
-
-
 @router.post("/{post_id}/convert-to-task", dependencies=[Depends(require_mutating_origin)])
 async def convert_post_to_task(
     post_id: str,
     payload: TaskCreate,
-    posts_service: PostsService = Depends(get_posts_service),
     tasks_service: TasksService = Depends(get_tasks_service),
     user: UserModel = Depends(require_current_user),
 ) -> dict[str, object]:
     task = await tasks_service.convert_post_to_task(post_id, payload, user)
-    post = await posts_service.get_post(post_id)
-    return {"post": post, "task": task}
+    return {"task": task}
 
 
 @router.post("/{post_id}/duplicate", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])

@@ -115,7 +115,6 @@ export default function App() {
           isBusy={isBusy}
           setIsBusy={setIsBusy}
           setNotice={setNotice}
-          onOpenTasks={() => setActiveView("tasks")}
         />
       )}
     </main>

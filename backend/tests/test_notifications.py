@@ -6,47 +6,8 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.models.post import NotificationTaskModel, UserModel
 from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository, seed_default_data
-from app.schemas.post import DuplicateUpdate, PostCreate, PostUpdate, StatusResponseUpdate
+from app.schemas.post import DuplicateUpdate, PostCreate, PostUpdate
 from app.services.notifications import NotificationProcessor
-
-
-def test_status_change_enqueues_creator_notification() -> None:
-    session = _session()
-    creator = _add_user(session, "creator", "ou_creator")
-    actor = _add_user(session, "actor", "ou_actor")
-    post = PostsRepository(session).create_post(PostCreate(title="Need exports", description="Please add export", tags=[]), creator)
-
-    PostsRepository(session).set_response(
-        post.id,
-        StatusResponseUpdate(status="planned", text="We will plan this."),
-        actor,
-    )
-
-    task = session.scalar(select(NotificationTaskModel))
-    assert task is not None
-    assert task.event_type == "status_changed"
-    assert task.recipient_open_id == "ou_creator"
-    assert "Need exports" in task.message
-    assert "新状态：已采纳" in task.message
-    assert "We will plan this." in task.message
-
-
-def test_duplicate_status_transition_dedupe_does_not_fail_update() -> None:
-    session = _session()
-    creator = _add_user(session, "creator", "ou_creator")
-    actor = _add_user(session, "actor", "ou_actor")
-    repo = PostsRepository(session)
-    post = repo.create_post(PostCreate(title="Need dedupe", description="Dedupe", tags=[]), creator)
-
-    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="First."), actor)
-    post_model = repo.get_active_post_model(post.id)
-    post_model.status = "open"
-    session.add(post_model)
-    session.commit()
-    repo.set_response(post.id, StatusResponseUpdate(status="planned", text="Second."), actor)
-
-    tasks = session.scalars(select(NotificationTaskModel)).all()
-    assert len(tasks) == 1
 
 
 def test_votes_above_previous_threshold_only_record_votes() -> None:
@@ -80,20 +41,6 @@ def test_editing_post_content_does_not_enqueue_notification() -> None:
     assert updated is not None
     assert updated.title == "Updated"
     assert session.scalars(select(NotificationTaskModel)).all() == []
-
-
-def test_completed_and_declined_notifications_use_product_status_labels() -> None:
-    session = _session()
-    creator = _add_user(session, "creator", "ou_creator")
-    actor = _add_user(session, "actor", "ou_actor")
-    post = PostsRepository(session).create_post(PostCreate(title="Need status labels", description="Labels", tags=[]), creator)
-
-    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="completed", text="Shipped."), actor)
-    PostsRepository(session).set_response(post.id, StatusResponseUpdate(status="declined", text="Not planned."), actor)
-
-    messages = [task.message for task in session.scalars(select(NotificationTaskModel)).all()]
-    assert any("新状态：任务已完成" in message for message in messages)
-    assert any("新状态：未采纳" in message for message in messages)
 
 
 def test_duplicate_and_archive_do_not_enqueue_notifications() -> None:

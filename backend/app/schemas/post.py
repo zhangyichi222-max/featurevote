@@ -118,11 +118,6 @@ class TagListResponse(BaseModel):
     items: list[TagItem]
 
 
-class StatusResponseUpdate(BaseModel):
-    status: PostStatus
-    text: str = Field(min_length=1, max_length=5000)
-
-
 class DuplicateUpdate(BaseModel):
     original_post_id: str
     text: str = Field(default="This suggestion duplicates another post.", max_length=5000)
