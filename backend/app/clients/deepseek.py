@@ -84,8 +84,11 @@ class DeepSeekSuggestionClient:
                     "role": "system",
                     "content": (
                         "你负责把同一时间窗口内的飞书聊天记录归纳成产品反馈看板中的投票需求。"
-                        "这些消息通常围绕同一个任务讨论，但也可能包含多个话题。"
-                        "请优先提炼用户问题、业务目标和期望结果，不要把脚本名、命令名、日志、临时实现方案单独当成需求。"
+                        "必须综合整个对话窗口理解上下文，不能把每条消息孤立判断。"
+                        "短句（例如“加一下”“这里”“可以吗”）必须结合前后消息理解。"
+                        "“生成一个需求”“希望”“需要”“能否支持”“是否可以”等明确意图必须输出候选需求。"
+                        "链接、路径、脚本名、命令和日志本身不是需求，但可能是相邻讨论的重要上下文，不得因此忽略整个窗口。"
+                        "请优先提炼用户问题、业务目标和期望结果。"
                         "如果同一目标被多次讨论，只输出一个需求。"
                         "如果内容不是需求、信息不足或只是闲聊/日志/命令输出，不要输出需求。"
                         "默认使用简体中文。只返回严格 JSON，格式为："
@@ -241,11 +244,16 @@ def _parse_feishu_requirement_drafts(content: str) -> list[FeishuRequirementDraf
     payload = _load_json_object(content)
     raw_requirements = payload.get("requirements", [])
     if not isinstance(raw_requirements, list):
-        return []
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="DeepSeek 返回的 requirements 不是数组。",
+        )
 
     drafts: list[FeishuRequirementDraft] = []
-    for item in raw_requirements:
+    invalid_reasons: list[str] = []
+    for index, item in enumerate(raw_requirements, start=1):
         if not isinstance(item, dict):
+            invalid_reasons.append(f"第 {index} 项不是对象")
             continue
         title = str(item.get("title", "")).strip()
         description = _normalize_description(str(item.get("description", "")).strip())
@@ -269,8 +277,22 @@ def _parse_feishu_requirement_drafts(content: str) -> list[FeishuRequirementDraf
                     confidence=max(0.0, min(confidence_value, 1.0)),
                 )
             )
-        except ValidationError:
+        except ValidationError as exc:
+            field_errors = ", ".join(
+                ".".join(str(part) for part in error["loc"])
+                for error in exc.errors()
+            )
+            invalid_reasons.append(f"第 {index} 项字段无效：{field_errors or '未知字段'}")
             continue
+    if invalid_reasons:
+        detail = f"DeepSeek 返回 {len(raw_requirements)} 个候选需求，其中 {len(invalid_reasons)} 个格式无效："
+        detail += "；".join(invalid_reasons[:5])
+        if not drafts:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=detail,
+            )
+        logger.warning(detail)
     return drafts
 
 

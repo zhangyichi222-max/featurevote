@@ -120,7 +120,7 @@ class FeishuRequirementImportService:
         filtered_skipped = 0
         for message in messages:
             cleaned_text = message.text.strip()
-            if self._should_skip(message, cleaned_text):
+            if self._is_definitely_invalid(message, cleaned_text):
                 self._record(message, "skipped", raw_text=cleaned_text)
                 stats.add("skipped")
                 filtered_skipped += 1
@@ -171,7 +171,10 @@ class FeishuRequirementImportService:
         except Exception as exc:  # noqa: BLE001 - per-window isolation for batch imports.
             detail = _error_detail(exc)
             if settings.feishu_import_debug_logging:
-                logger.info("DeepSeek 分析失败：%s", detail)
+                if isinstance(exc, HTTPException) and exc.status_code == 502:
+                    logger.info("DeepSeek 返回格式无效：%s", detail)
+                else:
+                    logger.info("DeepSeek 分析失败：%s", detail)
             for message in messages:
                 self._record(message, "failed", raw_text=message.text.strip(), error=detail)
                 stats.add("failed")
@@ -180,7 +183,7 @@ class FeishuRequirementImportService:
             if drafts:
                 logger.info("DeepSeek 分析完成：识别到 %s 个需求（%s）", len(drafts), _drafts_preview(drafts))
             else:
-                logger.info("DeepSeek 分析完成：未识别到需求")
+                logger.info("DeepSeek 分析完成：模型未识别到需求")
 
         for draft in drafts:
             source_messages = [
@@ -228,7 +231,7 @@ class FeishuRequirementImportService:
 
     async def _process_message(self, message: FeishuChatMessage, stats: FeishuImportRunResponse) -> None:
         cleaned_text = message.text.strip()
-        if self._should_skip(message, cleaned_text):
+        if self._is_definitely_invalid(message, cleaned_text):
             self._record(message, "skipped", raw_text=cleaned_text)
             stats.add("skipped")
             return
@@ -292,20 +295,25 @@ class FeishuRequirementImportService:
         stats.add("grouped_messages", len(source_messages))
         stats.add_created_title(post.title)
 
-    def _should_skip(self, message: FeishuChatMessage, cleaned_text: str) -> bool:
-        if len(cleaned_text) < settings.feishu_import_min_text_chars:
+    def _is_definitely_invalid(self, message: FeishuChatMessage, cleaned_text: str) -> bool:
+        if not cleaned_text:
             if settings.feishu_import_debug_logging:
-                logger.info("过滤短消息：%s", _content_preview(cleaned_text))
+                logger.info("过滤空消息")
+            return True
+        if cleaned_text.casefold() == "this message was recalled":
+            if settings.feishu_import_debug_logging:
+                logger.info("过滤已撤回消息")
             return True
         sender_type = (message.sender_type or "").lower()
-        if sender_type in {"app", "bot"}:
+        is_featurevote_summary = (
+            sender_type in {"app", "bot"}
+            and cleaned_text.startswith("FeatureVote 需求导入已完成")
+        )
+        if is_featurevote_summary:
             if settings.feishu_import_debug_logging:
-                logger.info("过滤机器人消息：%s", _content_preview(cleaned_text))
+                logger.info("过滤 FeatureVote 导入摘要")
             return True
-        skipped = _looks_like_non_requirement(cleaned_text)
-        if skipped and settings.feishu_import_debug_logging:
-            logger.info("过滤非需求内容：%s", _content_preview(cleaned_text))
-        return skipped
+        return False
 
     def _record(
         self,
@@ -442,47 +450,3 @@ def _content_preview(text: str, max_chars: int = 120) -> str:
     if len(cleaned) <= max_chars:
         return cleaned
     return f"{cleaned[:max_chars]}…"
-
-
-def _looks_like_non_requirement(text: str) -> bool:
-    cleaned = text.strip()
-    if not cleaned:
-        return True
-
-    lower = cleaned.lower()
-    requirement_markers = (
-        "需要",
-        "希望",
-        "能不能",
-        "是否可以",
-        "问题",
-        "需求",
-        "优化",
-        "支持",
-        "增加",
-        "改进",
-        "want",
-        "need",
-        "please",
-        "should",
-    )
-    if any(marker in lower for marker in requirement_markers):
-        return False
-
-    command_pattern = (
-        r"^\s*(python|pip|npm|pnpm|yarn|node|git|docker|kubectl|helm|bash|sh|cd|ls|cat|tail|grep|"
-        r"systemctl|journalctl)\b"
-    )
-    if re.match(command_pattern, lower):
-        return True
-
-    log_patterns = (
-        r"\b(traceback|exception|error|warn|info|debug)\b.*\b(line|at|in)\b",
-        r"^\s*\d{4}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2}",
-        r"^\s*(ok|done|success|failed|pass|passed|warning|error)[:\s]",
-    )
-    if any(re.search(pattern, lower) for pattern in log_patterns):
-        return True
-
-    code_or_log_chars = sum(cleaned.count(char) for char in "{}[]();=|")
-    return code_or_log_chars >= 6 and len(cleaned) < 240

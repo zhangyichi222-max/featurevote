@@ -89,6 +89,63 @@ def test_parse_feishu_requirement_drafts_accepts_grouped_json() -> None:
     assert drafts[0].confidence == 0.87
 
 
+def test_parse_feishu_requirement_drafts_returns_empty_for_model_empty_result() -> None:
+    assert _parse_feishu_requirement_drafts('{"requirements":[]}') == []
+
+
+def test_parse_feishu_requirement_drafts_rejects_invalid_candidates() -> None:
+    with pytest.raises(HTTPException) as exc:
+        _parse_feishu_requirement_drafts(
+            '{"requirements":[{"title":"短","description":"","source_message_ids":[],"confidence":0.8}]}'
+        )
+
+    assert exc.value.status_code == 502
+    assert "返回 1 个候选需求" in str(exc.value.detail)
+    assert "格式无效" in str(exc.value.detail)
+
+
+@pytest.mark.anyio
+async def test_feishu_summary_prompt_requires_full_conversation_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = DeepSeekSuggestionClient()
+    captured = {}
+
+    async def fake_chat(messages, *, service_name):
+        captured["messages"] = messages
+        captured["service_name"] = service_name
+        return (
+            '{"requirements":[{"title":"从群组历史消息创建任务",'
+            '"description":"问题：无法确认历史消息能否创建任务。\\n\\n'
+            '场景：验证历史消息导入。\\n\\n'
+            '期望结果：可以从群组历史消息创建任务。",'
+            '"source_message_ids":["om_test"],"confidence":0.9}]}'
+        )
+
+    monkeypatch.setattr(settings, "deepseek_enabled", True)
+    monkeypatch.setattr(settings, "deepseek_api_key", "test-key")
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    message = FeishuChatMessage(
+        message_id="om_test",
+        chat_id="oc_test",
+        sender_open_id="ou_test",
+        sender_name="测试用户",
+        sender_type="user",
+        text="生成一个测试需求，功能为能否正常从群组历史消息中创建对应的任务",
+        sent_at=None,
+    )
+
+    drafts = await client.summarize_feishu_requirements([message])
+
+    system_prompt = captured["messages"][0]["content"]
+    user_prompt = captured["messages"][1]["content"]
+    assert "综合整个对话窗口理解上下文" in system_prompt
+    assert "短句" in system_prompt
+    assert "生成一个需求" in system_prompt
+    assert message.text in user_prompt
+    assert drafts[0].title == "从群组历史消息创建任务"
+
+
 async def _fake_post_non_json(url: str, json: dict, headers: dict):
     _ = url, json, headers
     return _FakeResponse(json_error=ValueError("not json"))

@@ -94,7 +94,6 @@ class Settings(BaseSettings):
     feishu_import_interval_seconds: float = 60
     feishu_import_batch_size: int = 50
     feishu_import_default_tags: list[str] = ["飞书导入"]
-    feishu_import_min_text_chars: int = 20
     feishu_import_duplicate_threshold: float = 0.72
     feishu_import_notify_chat: bool = True
     feishu_import_grouping_enabled: bool = True

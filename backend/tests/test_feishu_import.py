@@ -226,6 +226,172 @@ def test_grouped_import_skips_low_confidence_draft(monkeypatch: pytest.MonkeyPat
     assert record.status == "skipped"
 
 
+def test_grouped_import_keeps_short_messages_links_commands_and_other_bots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    start = datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc)
+    messages = [
+        _message("om_1", text="群历史消息", sent_at=start),
+        _message("om_2", text="能自动生成任务吗？", sent_at=start + timedelta(minutes=1)),
+        _message("om_3", text="可以吗", sent_at=start + timedelta(minutes=2)),
+        _message("om_4", text="https://example.com/spec", sent_at=start + timedelta(minutes=3)),
+        _message("om_5", text="python sync.py --dry-run", sent_at=start + timedelta(minutes=4)),
+        _message(
+            "om_6",
+            text="机器人补充的上下文",
+            sender_type="bot",
+            sent_at=start + timedelta(minutes=5),
+        ),
+    ]
+    deepseek_client = CapturingGroupedDeepSeekClient([
+        FeishuRequirementDraft(
+            title="从群历史消息生成任务",
+            description="问题：历史讨论无法自动转成任务。\n\n场景：群内确认需求后需要人工整理。\n\n期望结果：系统自动从历史消息创建任务。",
+            source_message_ids=[message.message_id for message in messages],
+            confidence=0.9,
+        )
+    ])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient(messages),
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert stats.fetched == 6
+    assert stats.grouped_messages == 6
+    assert stats.created == 1
+    assert [message.message_id for message in deepseek_client.windows[0]] == [
+        message.message_id for message in messages
+    ]
+
+
+def test_grouped_import_filters_only_definitely_invalid_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    start = datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc)
+    valid_bot = _message(
+        "om_bot_context",
+        text="普通机器人提供的上下文",
+        sender_type="bot",
+        sent_at=start,
+    )
+    messages = [
+        _message("om_blank", text="   ", sent_at=start),
+        _message("om_recalled", text="This message was recalled", sent_at=start),
+        _message(
+            "om_summary",
+            text="FeatureVote 需求导入已完成\n读取消息：10",
+            sender_type="bot",
+            sent_at=start,
+        ),
+        valid_bot,
+    ]
+    deepseek_client = CapturingGroupedDeepSeekClient([])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient(messages),
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert stats.skipped == 4
+    assert len(deepseek_client.windows) == 1
+    assert [message.message_id for message in deepseek_client.windows[0]] == ["om_bot_context"]
+
+
+def test_explicit_test_requirement_reaches_deepseek_and_creates_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    message = _message(
+        "om_explicit",
+        text="生成一个测试需求，功能为能否正常从群组历史消息中创建对应的任务",
+        sent_at=datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc),
+    )
+    deepseek_client = CapturingGroupedDeepSeekClient([
+        FeishuRequirementDraft(
+            title="从群组历史消息创建任务",
+            description="问题：无法确认历史消息能否创建任务。\n\n场景：验证飞书历史消息导入流程。\n\n期望结果：从群组历史消息创建对应任务。",
+            source_message_ids=["om_explicit"],
+            confidence=0.9,
+        )
+    ])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert stats.created == 1
+    assert deepseek_client.windows[0][0].text == message.text
+
+
+def test_link_and_command_only_window_still_reaches_deepseek(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    start = datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc)
+    messages = [
+        _message("om_link", text="https://example.com/spec", sent_at=start),
+        _message("om_command", text="python sync.py --dry-run", sent_at=start + timedelta(minutes=1)),
+    ]
+    deepseek_client = CapturingGroupedDeepSeekClient([])
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient(messages),
+        deepseek_client=deepseek_client,
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+
+    assert stats.windows_processed == 1
+    assert stats.skipped == 2
+    assert [message.message_id for message in deepseek_client.windows[0]] == ["om_link", "om_command"]
+
+
+def test_invalid_deepseek_candidate_is_logged_and_recorded_as_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"], grouping_enabled=True)
+    monkeypatch.setattr(settings, "feishu_import_debug_logging", True)
+    message = _message(
+        "om_invalid_candidate",
+        text="生成一个测试需求",
+        sent_at=datetime(2026, 6, 22, 8, 0, tzinfo=timezone.utc),
+    )
+    service = FeishuRequirementImportService(
+        PostsRepository(session),
+        feishu_client=FakeFeishuClient([message]),
+        deepseek_client=InvalidGroupedDeepSeekClient(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="app.services.feishu_import"):
+        stats = asyncio.run(service.import_configured_chats())
+
+    record = session.scalar(
+        select(FeishuImportedMessageModel).where(
+            FeishuImportedMessageModel.message_id == message.message_id
+        )
+    )
+    assert stats.failed == 1
+    assert record.status == "failed"
+    assert "DeepSeek 返回格式无效" in caplog.text
+    assert "候选需求格式无效" in caplog.text
+
+
 def test_import_continues_pagination_after_fully_processed_page(monkeypatch: pytest.MonkeyPatch) -> None:
     session = _session()
     _configure(monkeypatch, chat_ids=["oc_test"])
@@ -389,7 +555,7 @@ def test_debug_logs_are_concise_and_hide_internal_ids(
     assert "第 1 页：文本消息 1 条，已处理 0 条，失败重试 0 条，本次新增 1 条" in output
     assert "历史消息读取完成：共 1 页，待处理 1 条" in output
     assert "正在分析第 1/1 组，共 1 条消息" in output
-    assert "DeepSeek 分析完成：未识别到需求" in output
+    assert "DeepSeek 分析完成：模型未识别到需求" in output
     assert "om_secret_message_id" not in output
     assert "ou_secret_open_id" not in output
 
@@ -481,6 +647,22 @@ class GroupedDeepSeekClient(FakeDeepSeekClient):
         return self.drafts
 
 
+class CapturingGroupedDeepSeekClient(GroupedDeepSeekClient):
+    def __init__(self, drafts: list[FeishuRequirementDraft]) -> None:
+        super().__init__(drafts)
+        self.windows: list[list[FeishuChatMessage]] = []
+
+    async def summarize_feishu_requirements(self, messages: list[FeishuChatMessage]) -> list[FeishuRequirementDraft]:
+        self.windows.append(list(messages))
+        return self.drafts
+
+
+class InvalidGroupedDeepSeekClient(FakeDeepSeekClient):
+    async def summarize_feishu_requirements(self, messages: list[FeishuChatMessage]) -> list[FeishuRequirementDraft]:
+        _ = messages
+        raise HTTPException(status_code=502, detail="候选需求格式无效")
+
+
 def _session():
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -496,7 +678,6 @@ def _session():
 def _configure(monkeypatch: pytest.MonkeyPatch, *, chat_ids: list[str], grouping_enabled: bool = False) -> None:
     monkeypatch.setattr(settings, "feishu_import_chat_ids", chat_ids)
     monkeypatch.setattr(settings, "feishu_import_batch_size", 50)
-    monkeypatch.setattr(settings, "feishu_import_min_text_chars", 20)
     monkeypatch.setattr(settings, "feishu_import_duplicate_threshold", 0.72)
     monkeypatch.setattr(settings, "feishu_import_default_tags", ["Feishu Import"])
     monkeypatch.setattr(settings, "feishu_import_notify_chat", True)
@@ -511,6 +692,7 @@ def _message(
     message_id: str,
     *,
     sender_open_id: str = "ou_alice",
+    sender_type: str = "user",
     text: str = "Need department export for vote results so teams can review priorities.",
     sent_at: datetime | None = None,
 ) -> FeishuChatMessage:
@@ -519,7 +701,7 @@ def _message(
         chat_id="oc_test",
         sender_open_id=sender_open_id,
         sender_name="Alice",
-        sender_type="user",
+        sender_type=sender_type,
         text=text,
         sent_at=sent_at,
     )
