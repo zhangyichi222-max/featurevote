@@ -45,6 +45,10 @@ class FeishuClient:
     user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
     message_url = "https://open.feishu.cn/open-apis/im/v1/messages"
     chat_url = "https://open.feishu.cn/open-apis/im/v1/chats"
+    contact_user_url = "https://open.feishu.cn/open-apis/contact/v3/users"
+
+    def __init__(self) -> None:
+        self._user_name_cache: dict[str, str | None] = {}
 
     def build_authorization_url(self, state: str) -> str:
         if not settings.feishu_app_id or not settings.feishu_redirect_uri:
@@ -178,6 +182,18 @@ class FeishuClient:
         data = self._get_json(f"{self.chat_url}/{parse.quote(chat_id)}", token)
         source = data.get("data") if isinstance(data.get("data"), dict) else {}
         return _first_str(source, "name")
+
+    def get_user_name(self, open_id: str) -> str | None:
+        if open_id in self._user_name_cache:
+            return self._user_name_cache[open_id]
+        token = self.get_tenant_access_token()
+        query = parse.urlencode({"user_id_type": "open_id"})
+        data = self._get_json(f"{self.contact_user_url}/{parse.quote(open_id)}?{query}", token)
+        source = data.get("data") if isinstance(data.get("data"), dict) else {}
+        user = source.get("user") if isinstance(source.get("user"), dict) else source
+        name = _first_str(user, "name", "en_name", "nickname")
+        self._user_name_cache[open_id] = name
+        return name
 
     def _post_json(self, url: str, payload: dict[str, Any], bearer_token: str | None = None) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")

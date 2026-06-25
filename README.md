@@ -48,6 +48,43 @@ npm install
 npm run dev
 ```
 
+## One-command Server Deployment
+
+`scripts/deploy_featurevote.sh` prepares a Linux server and deploys the complete
+application. On its first run it installs system dependencies, Node.js 20 and
+Docker; creates persistent configuration; starts managed MySQL, MinIO and
+Qdrant containers; runs migrations; builds the frontend; starts all workers;
+checks service health; and rebuilds the requirement embedding index.
+
+Run it directly from the server:
+
+```bash
+chmod +x /data/scripts/deploy_featurevote.sh
+FEISHU_APP_ID=cli_xxx \
+FEISHU_APP_SECRET=xxx \
+FEISHU_IMPORT_CHAT_IDS=oc_xxx,oc_yyy \
+DEEPSEEK_API_KEY=xxx \
+bash /data/scripts/deploy_featurevote.sh
+```
+
+The Git SSH key for `REPO_URL` must be able to clone the private repository.
+Use `REPO_URL=https://...` or another Git URL when needed.
+
+Generated secrets and service credentials are stored in
+`/data/project/FeatureVote/backend/.env`. Existing backend and frontend `.env`
+files are preserved on later deployments. Docker volumes for MySQL, MinIO and
+Qdrant are also retained.
+
+Useful overrides include:
+
+```bash
+PUBLIC_HOST=192.168.8.10
+BRANCH=main
+PROJECT_DIR=/data/project/FeatureVote
+BACKEND_PORT=8090
+FRONTEND_PORT=5173
+```
+
 ## Environment
 
 Backend defaults target a local MySQL database named `featurevote`.

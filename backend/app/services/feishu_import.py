@@ -71,6 +71,7 @@ class FeishuRequirementImportService:
                 for message in messages
                 if message.sent_at is None or message.sent_at >= start_time
             ]
+            messages = [self._with_sender_name(message) for message in messages]
             imported = self.repository.get_imported_feishu_messages(
                 [message.message_id for message in messages]
             )
@@ -81,11 +82,23 @@ class FeishuRequirementImportService:
                 record = imported.get(message.message_id)
                 if record is None:
                     actionable.append(message)
-                elif record.status == "failed":
-                    actionable.append(message)
-                    retries += 1
                 else:
-                    already_processed += 1
+                    self.repository.refresh_imported_feishu_message(
+                        record=record,
+                        chat_name=message.chat_name,
+                        root_id=message.root_id,
+                        parent_id=message.parent_id,
+                        sender_name=message.sender_name,
+                        sent_at=message.sent_at,
+                        raw_text=message.text.strip(),
+                    )
+                    if record.status == "failed":
+                        actionable.append(message)
+                        retries += 1
+                    else:
+                        already_processed += 1
+            if imported:
+                self.repository.commit_metadata_refresh()
             output.add("fetched", len(actionable))
             fetched_messages.extend(actionable)
             if settings.feishu_import_debug_logging:
@@ -122,6 +135,21 @@ class FeishuRequirementImportService:
         except Exception as exc:  # noqa: BLE001 - chat metadata is optional.
             logger.warning("Failed to load Feishu chat name for %s: %s", chat_id, exc)
             return None
+
+    def _with_sender_name(self, message: FeishuChatMessage) -> FeishuChatMessage:
+        if message.sender_name:
+            return message
+        if (message.sender_type or "").lower() in {"app", "bot"}:
+            return _replace_sender_name(message, "飞书机器人")
+        getter = getattr(self.feishu_client, "get_user_name", None)
+        if getter is None:
+            return message
+        try:
+            return _replace_sender_name(message, getter(message.sender_open_id))
+        except Exception as exc:  # noqa: BLE001 - name lookup must not block imports.
+            if settings.feishu_import_debug_logging:
+                logger.info("无法解析飞书成员 %s 的姓名：%s", message.sender_open_id, exc)
+            return message
 
     async def _process_messages_grouped(
         self,
@@ -574,6 +602,23 @@ def _with_chat_name(message: FeishuChatMessage, chat_name: str | None) -> Feishu
         text=message.text,
         sent_at=message.sent_at,
         chat_name=chat_name,
+        root_id=message.root_id,
+        parent_id=message.parent_id,
+    )
+
+
+def _replace_sender_name(message: FeishuChatMessage, sender_name: str | None) -> FeishuChatMessage:
+    if not sender_name:
+        return message
+    return FeishuChatMessage(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        sender_open_id=message.sender_open_id,
+        sender_name=sender_name,
+        sender_type=message.sender_type,
+        text=message.text,
+        sent_at=message.sent_at,
+        chat_name=message.chat_name,
         root_id=message.root_id,
         parent_id=message.parent_id,
     )

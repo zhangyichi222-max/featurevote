@@ -139,7 +139,7 @@ export function RequirementDetail({
                     key={message.message_id}
                   >
                     <div>
-                      <strong>{message.sender_name || "未知成员"}</strong>
+                      <strong>{message.sender_name || formatSenderId(message.sender_open_id)}</strong>
                       <time>{formatSourceTime(message.sent_at)}</time>
                       {message.is_direct_source ? <em>直接来源</em> : null}
                     </div>
@@ -160,5 +160,11 @@ function formatSourceTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "时间未知";
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatSenderId(value?: string | null) {
+  if (!value) return "未知成员";
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 10)}…${value.slice(-6)}`;
 }
 

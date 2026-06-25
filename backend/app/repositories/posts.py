@@ -391,6 +391,38 @@ class PostsRepository:
         ).all()
         return {record.message_id: record for record in records}
 
+    def refresh_imported_feishu_message(
+        self,
+        *,
+        record: FeishuImportedMessageModel,
+        chat_name: str | None,
+        root_id: str | None,
+        parent_id: str | None,
+        sender_name: str | None,
+        sent_at: datetime | None,
+        raw_text: str,
+    ) -> None:
+        changed = False
+        for attribute, value in (
+            ("chat_name", chat_name),
+            ("root_id", root_id),
+            ("parent_id", parent_id),
+            ("sender_name", sender_name),
+            ("sent_at", sent_at),
+        ):
+            if value is not None and getattr(record, attribute) != value:
+                setattr(record, attribute, value)
+                changed = True
+        if raw_text and record.raw_text != raw_text:
+            record.raw_text = raw_text
+            changed = True
+        if changed:
+            record.updated_at = _utc_now()
+            self.session.add(record)
+
+    def commit_metadata_refresh(self) -> None:
+        self.session.commit()
+
     def get_feishu_thread_messages(
         self,
         *,
@@ -548,11 +580,17 @@ class PostsRepository:
 
         result: list[PostSourceGroupItem] = []
         for (chat_id, key), records in grouped.items():
-            unique = {record.message_id: record for record in records}
+            unique = {
+                record.message_id: record
+                for record in records
+                if record.raw_text.strip().casefold() != "this message was recalled"
+            }
             ordered = sorted(
                 unique.values(),
                 key=lambda item: (_datetime_sort_value(item.sent_at or item.created_at), item.message_id),
             )
+            if not ordered:
+                continue
             chat_name = next((item.chat_name for item in ordered if item.chat_name), None) or chat_id
             result.append(
                 PostSourceGroupItem(
@@ -566,7 +604,7 @@ class PostsRepository:
                             chat_id=item.chat_id,
                             chat_name=item.chat_name or item.chat_id,
                             sender_open_id=item.sender_open_id,
-                            sender_name=item.sender_name,
+                            sender_name=item.sender_name or self._known_feishu_user_name(item.sender_open_id),
                             sent_at=item.sent_at,
                             root_id=item.root_id,
                             parent_id=item.parent_id,
@@ -583,6 +621,19 @@ class PostsRepository:
             )
         )
         return PostSourcesResponse(groups=result)
+
+    def _known_feishu_user_name(self, open_id: str | None) -> str | None:
+        if not open_id:
+            return None
+        user = self.session.scalar(
+            select(UserModel).where(
+                UserModel.tenant_id == DEFAULT_TENANT_ID,
+                UserModel.feishu_open_id == open_id,
+            )
+        )
+        if user is None or user.name in {"Feishu User", "Anonymous"}:
+            return None
+        return user.name
 
     def ensure_tag(self, name: str, color: str = "#2f75d6", is_public: bool = True) -> TagModel:
         name = name.strip()

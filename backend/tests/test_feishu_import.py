@@ -97,6 +97,38 @@ def test_post_sources_include_thread_context_and_mark_direct_messages() -> None:
     assert [message.is_direct_source for message in sources.groups[0].messages] == [False, True]
 
 
+def test_existing_import_metadata_is_backfilled_without_reprocessing(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _session()
+    _configure(monkeypatch, chat_ids=["oc_test"])
+    repository = PostsRepository(session)
+    repository.record_feishu_import(
+        message_id="om_existing",
+        chat_id="oc_test",
+        sender_open_id="ou_alice",
+        sender_name=None,
+        raw_text="Original",
+        status="skipped",
+    )
+    sent_at = datetime.now(timezone.utc)
+    message = _message("om_existing", sent_at=sent_at, sender_name=None)
+    client = FakeFeishuClient([message])
+    client.get_user_name = lambda open_id: "张三"
+    client.get_chat_name = lambda chat_id: "产品群"
+    service = FeishuRequirementImportService(
+        repository,
+        feishu_client=client,
+        deepseek_client=FakeDeepSeekClient(),
+    )
+
+    stats = asyncio.run(service.import_configured_chats())
+    record = repository.get_imported_feishu_message("om_existing")
+
+    assert stats.fetched == 0
+    assert record.sender_name == "张三"
+    assert record.chat_name == "产品群"
+    assert record.sent_at.replace(tzinfo=timezone.utc) == sent_at
+
+
 def test_import_skips_previously_processed_message(monkeypatch: pytest.MonkeyPatch) -> None:
     session = _session()
     _configure(monkeypatch, chat_ids=["oc_test"])
@@ -798,6 +830,7 @@ def _message(
     message_id: str,
     *,
     sender_open_id: str = "ou_alice",
+    sender_name: str | None = "Alice",
     sender_type: str = "user",
     text: str = "Need department export for vote results so teams can review priorities.",
     sent_at: datetime | None = None,
@@ -808,7 +841,7 @@ def _message(
         message_id=message_id,
         chat_id="oc_test",
         sender_open_id=sender_open_id,
-        sender_name="Alice",
+        sender_name=sender_name,
         sender_type=sender_type,
         text=text,
         sent_at=sent_at,

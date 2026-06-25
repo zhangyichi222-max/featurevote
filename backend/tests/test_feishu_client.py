@@ -136,6 +136,23 @@ def test_list_chat_text_messages_parses_official_sender_shape(monkeypatch: pytes
     assert messages[0].text == "Need department export for vote results."
 
 
+def test_get_user_name_uses_open_id_and_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FeishuClient()
+    monkeypatch.setattr(client, "get_tenant_access_token", lambda: "tenant-token")
+    calls = []
+
+    def fake_get(url, token):
+        calls.append((url, token))
+        return {"code": 0, "data": {"user": {"name": "张三"}}}
+
+    monkeypatch.setattr(client, "_get_json", fake_get)
+
+    assert client.get_user_name("ou_alice") == "张三"
+    assert client.get_user_name("ou_alice") == "张三"
+    assert len(calls) == 1
+    assert "user_id_type=open_id" in calls[0][0]
+
+
 class _Body:
     def __init__(self, body: bytes) -> None:
         self.body = body
