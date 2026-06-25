@@ -4,6 +4,9 @@ from difflib import SequenceMatcher
 from fastapi import HTTPException
 
 from app.clients.deepseek import DeepSeekSuggestionClient
+from app.clients.ollama import OllamaEmbeddingClient
+from app.clients.qdrant import QdrantClient
+from app.core.config import settings
 from app.models.post import PostModel
 from app.repositories.posts import PostsRepository
 from app.schemas.ai import (
@@ -18,8 +21,15 @@ HIGH_CONFIDENCE_THRESHOLD = 0.72
 
 
 class SimilarRequirementsService:
-    def __init__(self, repository: PostsRepository) -> None:
+    def __init__(
+        self,
+        repository: PostsRepository,
+        embedding_client: OllamaEmbeddingClient | None = None,
+        vector_client: QdrantClient | None = None,
+    ) -> None:
         self.repository = repository
+        self.embedding_client = embedding_client or OllamaEmbeddingClient()
+        self.vector_client = vector_client or QdrantClient()
 
     async def find_similar(self, payload: SimilarRequirementsRequest) -> SimilarRequirementsResponse:
         title = payload.title.strip()
@@ -28,23 +38,39 @@ class SimilarRequirementsService:
         if len(query_text) < MIN_QUERY_CHARS:
             return SimilarRequirementsResponse(items=[])
 
-        candidates = [
-            self._to_item(post, _similarity(title, description, post))
-            for post in self.repository.list_posts_for_similarity()
-        ]
+        vector_scores: dict[str, float] = {}
+        try:
+            await self.vector_client.ensure_collection()
+            vector = await self.embedding_client.embed(query_text)
+            matches = await self.vector_client.search(vector, settings.similarity_vector_candidates)
+            vector_scores = dict(matches)
+            candidate_posts = self.repository.get_post_models_by_ids([post_id for post_id, _ in matches])
+        except Exception:  # noqa: BLE001 - text-only fallback keeps imports available.
+            candidate_posts = self.repository.list_posts_for_similarity()
+
+        candidates = []
+        for post in candidate_posts:
+            text_score = _similarity(title, description, post)
+            vector_score = vector_scores.get(post.id)
+            combined = text_score if vector_score is None else round(vector_score * 0.65 + text_score * 0.35, 4)
+            candidates.append(self._to_item(post, combined))
         candidates = [
             item
             for item in candidates
             if item.similarity >= MIN_SIMILARITY
         ]
         candidates.sort(key=lambda item: (item.similarity, item.votes_count), reverse=True)
-        candidates = candidates[: payload.limit]
+        candidates = candidates[: max(payload.limit, settings.similarity_llm_candidates)]
 
         if not candidates:
             return SimilarRequirementsResponse(items=[])
 
         try:
-            enhanced = await DeepSeekSuggestionClient().assess_similar_requirements(title, description, candidates)
+            enhanced = await DeepSeekSuggestionClient().assess_similar_requirements(
+                title,
+                description,
+                candidates[: settings.similarity_llm_candidates],
+            )
         except HTTPException:
             return SimilarRequirementsResponse(items=candidates, ai_enhanced=False)
 

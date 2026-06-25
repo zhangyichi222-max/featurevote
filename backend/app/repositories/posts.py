@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import func, or_, select
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.post import (
     FeishuImportedMessageModel,
+    PostEmbeddingIndexModel,
     PostModel,
     PostResponseModel,
     TagModel,
@@ -19,6 +20,9 @@ from app.schemas.post import (
     ModerationUpdate,
     PostCreate,
     PostItem,
+    PostSourceGroupItem,
+    PostSourceMessageItem,
+    PostSourcesResponse,
     PostUpdate,
     TagCreate,
     TagItem,
@@ -135,6 +139,76 @@ class PostsRepository:
             .order_by(PostModel.updated_at.desc())
         )
         return list(self.session.scalars(statement).unique().all())
+
+    def get_post_models_by_ids(self, post_ids: list[str]) -> list[PostModel]:
+        if not post_ids:
+            return []
+        records = self.session.scalars(
+            select(PostModel)
+            .where(
+                PostModel.id.in_(post_ids),
+                PostModel.archived_at.is_(None),
+                PostModel.status != "duplicate",
+            )
+            .options(selectinload(PostModel.votes))
+        ).unique().all()
+        by_id = {record.id: record for record in records}
+        return [by_id[post_id] for post_id in post_ids if post_id in by_id]
+
+    def list_active_post_models(self) -> list[PostModel]:
+        return list(
+            self.session.scalars(
+                select(PostModel)
+                .where(PostModel.archived_at.is_(None), PostModel.status != "duplicate")
+                .order_by(PostModel.number.asc())
+            ).all()
+        )
+
+    def save_embedding_index_state(
+        self,
+        post_id: str,
+        *,
+        model: str,
+        content_hash: str,
+        status: str,
+        error: str | None = None,
+        indexed_at: datetime | None = None,
+    ) -> None:
+        record = self.session.scalar(
+            select(PostEmbeddingIndexModel).where(PostEmbeddingIndexModel.post_id == post_id)
+        )
+        now = _utc_now()
+        if record is None:
+            record = PostEmbeddingIndexModel(
+                id=uuid4().hex,
+                tenant_id=DEFAULT_TENANT_ID,
+                post_id=post_id,
+                model=model,
+                content_hash=content_hash,
+                status=status,
+                created_at=now,
+                updated_at=now,
+            )
+        record.model = model
+        record.content_hash = content_hash
+        record.status = status
+        record.last_error = error[:2000] if error else None
+        record.indexed_at = indexed_at
+        record.updated_at = now
+        self.session.add(record)
+        self.session.commit()
+
+    def mark_embedding_index_removed(self, post_id: str, *, error: str | None = None) -> None:
+        record = self.session.scalar(
+            select(PostEmbeddingIndexModel).where(PostEmbeddingIndexModel.post_id == post_id)
+        )
+        if record is None:
+            return
+        record.status = "remove_failed" if error else "removed"
+        record.last_error = error[:2000] if error else None
+        record.updated_at = _utc_now()
+        self.session.add(record)
+        self.session.commit()
 
     def get_active_post_model(self, post_id: str) -> PostModel | None:
         return self.session.scalars(self._post_select().where(PostModel.id == post_id)).first()
@@ -317,6 +391,30 @@ class PostsRepository:
         ).all()
         return {record.message_id: record for record in records}
 
+    def get_feishu_thread_messages(
+        self,
+        *,
+        chat_id: str,
+        thread_ids: set[str],
+        limit: int = 50,
+    ) -> list[FeishuImportedMessageModel]:
+        if not thread_ids:
+            return []
+        records = self.session.scalars(
+            select(FeishuImportedMessageModel)
+            .where(
+                FeishuImportedMessageModel.chat_id == chat_id,
+                or_(
+                    FeishuImportedMessageModel.message_id.in_(thread_ids),
+                    FeishuImportedMessageModel.root_id.in_(thread_ids),
+                    FeishuImportedMessageModel.parent_id.in_(thread_ids),
+                ),
+            )
+            .order_by(FeishuImportedMessageModel.sent_at.asc(), FeishuImportedMessageModel.created_at.asc())
+            .limit(limit)
+        ).all()
+        return list(records)
+
     def record_feishu_import(
         self,
         *,
@@ -326,7 +424,12 @@ class PostsRepository:
         sender_name: str | None,
         raw_text: str,
         status: str,
+        chat_name: str | None = None,
+        root_id: str | None = None,
+        parent_id: str | None = None,
+        sent_at: datetime | None = None,
         post_id: str | None = None,
+        is_direct_source: bool = False,
         error: str | None = None,
     ) -> FeishuImportedMessageModel:
         existing = self.get_imported_feishu_message(message_id)
@@ -334,11 +437,16 @@ class PostsRepository:
             if existing.status != "failed":
                 return existing
             existing.chat_id = chat_id
+            existing.chat_name = chat_name
+            existing.root_id = root_id
+            existing.parent_id = parent_id
             existing.sender_open_id = sender_open_id
             existing.sender_name = sender_name
+            existing.sent_at = sent_at
             existing.raw_text = raw_text
             existing.status = status
             existing.post_id = post_id
+            existing.is_direct_source = is_direct_source
             existing.error = error[:2000] if error else None
             existing.updated_at = _utc_now()
             self.session.commit()
@@ -349,9 +457,14 @@ class PostsRepository:
             tenant_id=DEFAULT_TENANT_ID,
             message_id=message_id,
             chat_id=chat_id,
+            chat_name=chat_name,
+            root_id=root_id,
+            parent_id=parent_id,
             sender_open_id=sender_open_id,
             sender_name=sender_name,
+            sent_at=sent_at,
             post_id=post_id,
+            is_direct_source=is_direct_source,
             status=status,
             error=error[:2000] if error else None,
             raw_text=raw_text,
@@ -367,17 +480,109 @@ class PostsRepository:
             if existing is not None:
                 if existing.status == "failed":
                     existing.chat_id = chat_id
+                    existing.chat_name = chat_name
+                    existing.root_id = root_id
+                    existing.parent_id = parent_id
                     existing.sender_open_id = sender_open_id
                     existing.sender_name = sender_name
+                    existing.sent_at = sent_at
                     existing.raw_text = raw_text
                     existing.status = status
                     existing.post_id = post_id
+                    existing.is_direct_source = is_direct_source
                     existing.error = error[:2000] if error else None
                     existing.updated_at = _utc_now()
                     self.session.commit()
                 return existing
             raise
         return record
+
+    def get_post_sources(self, post_id: str, *, context_limit: int = 50) -> PostSourcesResponse:
+        direct_records = list(
+            self.session.scalars(
+                select(FeishuImportedMessageModel)
+                .where(
+                    FeishuImportedMessageModel.post_id == post_id,
+                    or_(
+                        FeishuImportedMessageModel.is_direct_source.is_(True),
+                        FeishuImportedMessageModel.post_id.is_not(None),
+                    ),
+                )
+                .order_by(FeishuImportedMessageModel.sent_at.asc(), FeishuImportedMessageModel.created_at.asc())
+            ).all()
+        )
+        if not direct_records:
+            return PostSourcesResponse(groups=[])
+
+        direct_ids = {record.message_id for record in direct_records}
+        grouped: dict[tuple[str, str], list[FeishuImportedMessageModel]] = {}
+        group_kinds: dict[tuple[str, str], str] = {}
+        for direct in direct_records:
+            thread_key = direct.root_id or direct.parent_id
+            if thread_key:
+                key = (direct.chat_id, thread_key)
+                group_kinds[key] = "thread"
+                thread_records = self.get_feishu_thread_messages(
+                    chat_id=direct.chat_id,
+                    thread_ids={thread_key, direct.message_id},
+                    limit=context_limit,
+                )
+                grouped.setdefault(key, []).extend(thread_records)
+                continue
+
+            sent_at = direct.sent_at or direct.created_at
+            key = (direct.chat_id, f"window:{sent_at.isoformat()}")
+            group_kinds[key] = "window"
+            start = sent_at - timedelta(minutes=60)
+            end = sent_at + timedelta(minutes=60)
+            window_records = self.session.scalars(
+                select(FeishuImportedMessageModel)
+                .where(
+                    FeishuImportedMessageModel.chat_id == direct.chat_id,
+                    func.coalesce(FeishuImportedMessageModel.sent_at, FeishuImportedMessageModel.created_at).between(start, end),
+                )
+                .order_by(FeishuImportedMessageModel.sent_at.asc(), FeishuImportedMessageModel.created_at.asc())
+                .limit(context_limit)
+            ).all()
+            grouped.setdefault(key, []).extend(window_records)
+
+        result: list[PostSourceGroupItem] = []
+        for (chat_id, key), records in grouped.items():
+            unique = {record.message_id: record for record in records}
+            ordered = sorted(
+                unique.values(),
+                key=lambda item: (_datetime_sort_value(item.sent_at or item.created_at), item.message_id),
+            )
+            chat_name = next((item.chat_name for item in ordered if item.chat_name), None) or chat_id
+            result.append(
+                PostSourceGroupItem(
+                    key=key,
+                    kind=group_kinds[(chat_id, key)],
+                    chat_id=chat_id,
+                    chat_name=chat_name,
+                    messages=[
+                        PostSourceMessageItem(
+                            message_id=item.message_id,
+                            chat_id=item.chat_id,
+                            chat_name=item.chat_name or item.chat_id,
+                            sender_open_id=item.sender_open_id,
+                            sender_name=item.sender_name,
+                            sent_at=item.sent_at,
+                            root_id=item.root_id,
+                            parent_id=item.parent_id,
+                            raw_text=item.raw_text,
+                            is_direct_source=item.message_id in direct_ids,
+                        )
+                        for item in ordered[:context_limit]
+                    ],
+                )
+            )
+        result.sort(
+            key=lambda group: _datetime_sort_value(
+                group.messages[0].sent_at or datetime.min.replace(tzinfo=timezone.utc)
+            )
+        )
+        return PostSourcesResponse(groups=result)
 
     def ensure_tag(self, name: str, color: str = "#2f75d6", is_public: bool = True) -> TagModel:
         name = name.strip()
@@ -497,3 +702,7 @@ def _slugify(value: str) -> str:
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _datetime_sort_value(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)

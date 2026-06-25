@@ -10,11 +10,13 @@ from app.schemas.post import (
     PostCreate,
     PostItem,
     PostListResponse,
+    PostSourcesResponse,
     PostUpdate,
     TagCreate,
     TagListResponse,
     VoteCreate,
 )
+from app.services.embedding_index import PostEmbeddingIndexService
 
 
 class PostsService:
@@ -52,8 +54,16 @@ class PostsService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
         return post
 
+    async def get_post_sources(self, post_id: str) -> PostSourcesResponse:
+        await self.get_post(post_id)
+        return self.repository.get_post_sources(post_id)
+
     async def create_post(self, payload: PostCreate, user: UserModel) -> PostItem:
-        return self.repository.create_post(payload, user)
+        item = self.repository.create_post(payload, user)
+        post = self.repository.get_active_post_model(item.id)
+        if post is not None:
+            await PostEmbeddingIndexService(self.repository).index_post(post)
+        return item
 
     async def update_post(self, post_id: str, payload: PostUpdate, user: UserModel) -> PostItem:
         _ = user
@@ -68,6 +78,9 @@ class PostsService:
         updated = self.repository.update_post(post_id, payload)
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        post = self.repository.get_active_post_model(post_id)
+        if post is not None:
+            await PostEmbeddingIndexService(self.repository).index_post(post)
         return updated
 
     async def vote_post(self, post_id: str, user: UserModel) -> ActionResult:
@@ -104,4 +117,5 @@ class PostsService:
         post = self.repository.archive_post(post_id, actor)
         if post is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        await PostEmbeddingIndexService(self.repository).remove_post(post_id)
         return post

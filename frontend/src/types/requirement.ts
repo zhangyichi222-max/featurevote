@@ -54,3 +54,28 @@ export interface SimilarRequirementsResponse {
   items: SimilarRequirement[];
   ai_enhanced: boolean;
 }
+
+export interface RequirementSourceMessage {
+  message_id: string;
+  chat_id: string;
+  chat_name: string;
+  sender_open_id?: string | null;
+  sender_name?: string | null;
+  sent_at?: string | null;
+  root_id?: string | null;
+  parent_id?: string | null;
+  raw_text: string;
+  is_direct_source: boolean;
+}
+
+export interface RequirementSourceGroup {
+  key: string;
+  kind: "thread" | "window";
+  chat_id: string;
+  chat_name: string;
+  messages: RequirementSourceMessage[];
+}
+
+export interface RequirementSourcesResponse {
+  groups: RequirementSourceGroup[];
+}

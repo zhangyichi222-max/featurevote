@@ -1,6 +1,7 @@
 from app.models.post import (
     FeishuImportedMessageModel,
     NotificationTaskModel,
+    PostEmbeddingIndexModel,
     PostModel,
     PostResponseModel,
     PostTagModel,
@@ -15,6 +16,7 @@ from app.models.post import (
 __all__ = [
     "FeishuImportedMessageModel",
     "NotificationTaskModel",
+    "PostEmbeddingIndexModel",
     "PostModel",
     "PostResponseModel",
     "PostTagModel",

@@ -106,6 +106,30 @@ class PostModel(Base):
     linked_task: Mapped["TaskModel | None"] = relationship(back_populates="source_post", uselist=False)
     duplicate_of: Mapped["PostModel | None"] = relationship(remote_side=[id])
     archived_by: Mapped[UserModel | None] = relationship(foreign_keys=[archived_by_user_id])
+    embedding_index: Mapped["PostEmbeddingIndexModel | None"] = relationship(
+        back_populates="post",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class PostEmbeddingIndexModel(Base):
+    __tablename__ = "post_embedding_indexes"
+    __table_args__ = (UniqueConstraint("post_id", name="uq_post_embedding_indexes_post"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[str] = mapped_column(String(32), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=utc_now, onupdate=utc_now)
+
+    tenant: Mapped[TenantModel] = relationship()
+    post: Mapped[PostModel] = relationship(back_populates="embedding_index")
 
 
 class VoteModel(Base):
@@ -210,9 +234,14 @@ class FeishuImportedMessageModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(32), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     message_id: Mapped[str] = mapped_column(String(255), nullable=False)
     chat_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    chat_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    root_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    parent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sender_open_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sender_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
     post_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
+    is_direct_source: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False, default="")

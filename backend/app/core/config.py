@@ -16,6 +16,9 @@ _SUPPORTED_SERVER_ENV_PREFIXES = (
     "MINIO_",
     "TASK_",
     "ATTACHMENT_",
+    "OLLAMA_",
+    "QDRANT_",
+    "SIMILARITY_",
 )
 
 
@@ -113,6 +116,15 @@ class Settings(BaseSettings):
     deepseek_timeout: float = 30
     deepseek_max_text_chars: int = 12000
     deepseek_min_text_chars: int = 20
+    ollama_base_url: str = "http://192.168.8.65:11434"
+    ollama_embedding_model: str = "bge-m3"
+    ollama_embedding_dimensions: int = 1024
+    ollama_timeout: float = 20
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_collection: str = "featurevote_requirements"
+    qdrant_timeout: float = 10
+    similarity_vector_candidates: int = 20
+    similarity_llm_candidates: int = 5
     minio_endpoint: str = ""
     minio_access_key: str = ""
     minio_secret_key: str = ""

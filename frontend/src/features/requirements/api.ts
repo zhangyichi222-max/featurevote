@@ -2,6 +2,7 @@ import { apiClient } from "../../api/client";
 import type {
   CurrentUser,
   RequirementListResponse,
+  RequirementSourcesResponse,
   SimilarRequirementsResponse,
 } from "../../types/requirement";
 
@@ -88,6 +89,10 @@ export async function fetchRequirements({
     page_size: data.page_size,
     total_pages: data.total_pages,
   } satisfies RequirementListResponse;
+}
+
+export async function fetchRequirementSources(requirementId: string) {
+  return apiClient.get<RequirementSourcesResponse>(`/posts/${requirementId}/sources`);
 }
 
 export async function createRequirement(payload: {

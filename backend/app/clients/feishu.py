@@ -33,6 +33,9 @@ class FeishuChatMessage:
     sender_type: str | None
     text: str
     sent_at: datetime | None
+    chat_name: str | None = None
+    root_id: str | None = None
+    parent_id: str | None = None
 
 
 class FeishuClient:
@@ -41,6 +44,7 @@ class FeishuClient:
     token_url = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
     user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
     message_url = "https://open.feishu.cn/open-apis/im/v1/messages"
+    chat_url = "https://open.feishu.cn/open-apis/im/v1/chats"
 
     def build_authorization_url(self, state: str) -> str:
         if not settings.feishu_app_id or not settings.feishu_redirect_uri:
@@ -169,6 +173,12 @@ class FeishuClient:
         next_token = source.get("page_token") if isinstance(source, dict) else None
         return messages, next_token if isinstance(next_token, str) and next_token else None
 
+    def get_chat_name(self, chat_id: str) -> str | None:
+        token = self.get_tenant_access_token()
+        data = self._get_json(f"{self.chat_url}/{parse.quote(chat_id)}", token)
+        source = data.get("data") if isinstance(data.get("data"), dict) else {}
+        return _first_str(source, "name")
+
     def _post_json(self, url: str, payload: dict[str, Any], bearer_token: str | None = None) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -246,11 +256,14 @@ def _parse_chat_message(item: dict[str, Any], chat_id: str) -> FeishuChatMessage
     return FeishuChatMessage(
         message_id=message_id,
         chat_id=_first_str(item, "chat_id") or chat_id,
+        chat_name=_first_str(item, "chat_name", "name"),
         sender_open_id=sender_open_id,
         sender_name=_first_str(sender, "sender_name"),
         sender_type=_first_str(sender, "sender_type"),
         text=text,
         sent_at=_parse_millis_datetime(_first_str(item, "create_time", "update_time")),
+        root_id=_first_str(item, "root_id"),
+        parent_id=_first_str(item, "parent_id"),
     )
 
 

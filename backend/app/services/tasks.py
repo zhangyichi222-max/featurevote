@@ -9,6 +9,7 @@ from app.clients.minio_storage import (
     TaskImageStorage,
 )
 from app.models.post import UserModel
+from app.repositories.posts import PostsRepository
 from app.schemas.post import ActionResult
 from app.repositories.tasks import TasksRepository
 from app.schemas.task import (
@@ -22,6 +23,7 @@ from app.schemas.task import (
     TaskListResponse,
     TaskUpdate,
 )
+from app.services.embedding_index import PostEmbeddingIndexService
 
 
 class TasksService:
@@ -72,6 +74,7 @@ class TasksService:
         post, task = self.repository.convert_post_to_task(post_id, payload, user)
         if post is None or task is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.")
+        await PostEmbeddingIndexService(PostsRepository(self.repository.session)).remove_post(post_id)
         return task
 
     async def update_task(self, task_id: str, payload: TaskUpdate, user: UserModel) -> TaskItem:

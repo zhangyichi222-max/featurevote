@@ -9,6 +9,7 @@ from app.schemas.post import (
     PostCreate,
     PostItem,
     PostListResponse,
+    PostSourcesResponse,
     PostUpdate,
     TagCreate,
     TagListResponse,
@@ -55,6 +56,16 @@ async def create_post(
 @router.get("/{post_id}", response_model=PostItem)
 async def get_post(post_id: str, service: PostsService = Depends(get_posts_service)) -> PostItem:
     return await service.get_post(post_id)
+
+
+@router.get("/{post_id}/sources", response_model=PostSourcesResponse)
+async def get_post_sources(
+    post_id: str,
+    service: PostsService = Depends(get_posts_service),
+    user: UserModel = Depends(require_current_user),
+) -> PostSourcesResponse:
+    _ = user
+    return await service.get_post_sources(post_id)
 
 
 @router.patch("/{post_id}", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])

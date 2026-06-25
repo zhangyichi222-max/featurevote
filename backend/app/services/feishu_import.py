@@ -15,6 +15,7 @@ from app.schemas.ai import SimilarRequirementsRequest
 from app.schemas.feishu_import import FeishuImportRunResponse
 from app.schemas.post import PostCreate
 from app.services.similarity import SimilarRequirementsService
+from app.services.embedding_index import PostEmbeddingIndexService
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class FeishuRequirementImportService:
         page_size = max(1, min(settings.feishu_import_batch_size, 50))
         page_number = 0
         fetched_messages: list[FeishuChatMessage] = []
+        chat_name = self._get_chat_name(chat_id)
         while True:
             page_number += 1
             messages, page_token = self.feishu_client.list_chat_text_messages(
@@ -65,7 +67,7 @@ class FeishuRequirementImportService:
                 for message in messages
             )
             messages = [
-                message
+                _with_chat_name(message, chat_name)
                 for message in messages
                 if message.sent_at is None or message.sent_at >= start_time
             ]
@@ -111,6 +113,16 @@ class FeishuRequirementImportService:
         self._notify_chat(chat_id, _delta(before, output))
         return output
 
+    def _get_chat_name(self, chat_id: str) -> str | None:
+        getter = getattr(self.feishu_client, "get_chat_name", None)
+        if getter is None:
+            return None
+        try:
+            return getter(chat_id)
+        except Exception as exc:  # noqa: BLE001 - chat metadata is optional.
+            logger.warning("Failed to load Feishu chat name for %s: %s", chat_id, exc)
+            return None
+
     async def _process_messages_grouped(
         self,
         messages: list[FeishuChatMessage],
@@ -127,7 +139,7 @@ class FeishuRequirementImportService:
                 continue
             eligible.append(message)
 
-        windows = _message_windows(eligible)
+        windows = self._conversation_windows(eligible)
         if settings.feishu_import_debug_logging:
             logger.info(
                 "消息筛选完成：过滤 %s 条，待分析 %s 条，共 %s 组",
@@ -140,6 +152,7 @@ class FeishuRequirementImportService:
             await self._process_message_window(
                 window,
                 stats,
+                actionable_message_ids={message.message_id for message in eligible},
                 window_index=index,
                 window_count=len(windows),
             )
@@ -149,12 +162,14 @@ class FeishuRequirementImportService:
         messages: list[FeishuChatMessage],
         stats: FeishuImportRunResponse,
         *,
+        actionable_message_ids: set[str] | None = None,
         window_index: int = 1,
         window_count: int = 1,
     ) -> None:
         if not messages:
             return
 
+        actionable_ids = actionable_message_ids or {message.message_id for message in messages}
         message_by_id = {message.message_id: message for message in messages}
         handled_message_ids: set[str] = set()
         if settings.feishu_import_debug_logging:
@@ -189,13 +204,17 @@ class FeishuRequirementImportService:
             source_messages = [
                 message_by_id[message_id]
                 for message_id in draft.source_message_ids
-                if message_id in message_by_id and message_id not in handled_message_ids
+                if (
+                    message_id in message_by_id
+                    and message_id in actionable_ids
+                    and message_id not in handled_message_ids
+                )
             ]
             if not source_messages:
                 source_messages = [
                     message
                     for message in messages
-                    if message.message_id not in handled_message_ids
+                    if message.message_id in actionable_ids and message.message_id not in handled_message_ids
                 ]
             if not source_messages:
                 continue
@@ -224,7 +243,7 @@ class FeishuRequirementImportService:
             handled_message_ids.update(message.message_id for message in source_messages)
 
         for message in messages:
-            if message.message_id in handled_message_ids:
+            if message.message_id not in actionable_ids or message.message_id in handled_message_ids:
                 continue
             self._record(message, "skipped", raw_text=message.text.strip())
             stats.add("skipped")
@@ -288,6 +307,9 @@ class FeishuRequirementImportService:
             ),
             creator,
         )
+        post_model = self.repository.get_active_post_model(post.id)
+        if post_model is not None:
+            await PostEmbeddingIndexService(self.repository).index_post(post_model)
         for message in source_messages:
             self._record(message, "created", raw_text=message.text.strip(), post_id=post.id)
         stats.add("created")
@@ -329,13 +351,43 @@ class FeishuRequirementImportService:
         self.repository.record_feishu_import(
             message_id=message.message_id,
             chat_id=message.chat_id,
+            chat_name=message.chat_name,
+            root_id=message.root_id,
+            parent_id=message.parent_id,
             sender_open_id=message.sender_open_id,
             sender_name=message.sender_name,
+            sent_at=message.sent_at,
             raw_text=raw_text,
             status=status,
             post_id=post_id,
+            is_direct_source=post_id is not None,
             error=error,
         )
+
+    def _conversation_windows(self, messages: list[FeishuChatMessage]) -> list[list[FeishuChatMessage]]:
+        groups = _thread_first_windows(messages)
+        output: list[list[FeishuChatMessage]] = []
+        for group in groups:
+            thread_ids = {
+                value
+                for message in group
+                for value in (message.message_id, message.root_id, message.parent_id)
+                if value
+            }
+            is_thread = any(message.root_id or message.parent_id for message in group)
+            if not is_thread:
+                output.append(group)
+                continue
+            history = self.repository.get_feishu_thread_messages(
+                chat_id=group[0].chat_id,
+                thread_ids=thread_ids,
+                limit=max(1, settings.feishu_import_max_messages_per_summary),
+            )
+            history_messages = [_record_to_chat_message(record) for record in history]
+            combined = {message.message_id: message for message in [*history_messages, *group]}
+            ordered = sorted(combined.values(), key=_message_sort_key)
+            output.append(ordered[-max(1, settings.feishu_import_max_messages_per_summary):])
+        return output
 
     def _notify_chat(self, chat_id: str, stats: FeishuImportRunResponse) -> None:
         if not settings.feishu_import_notify_chat:
@@ -437,6 +489,101 @@ def _message_windows(messages: list[FeishuChatMessage]) -> list[list[FeishuChatM
     for index in range(0, len(untimed_messages), max_messages):
         windows.append(untimed_messages[index:index + max_messages])
     return windows
+
+
+def _thread_first_windows(messages: list[FeishuChatMessage]) -> list[list[FeishuChatMessage]]:
+    if not messages:
+        return []
+    by_id = {message.message_id: message for message in messages}
+    root_cache: dict[str, str | None] = {}
+
+    def resolve_root(message: FeishuChatMessage) -> str | None:
+        if message.message_id in root_cache:
+            return root_cache[message.message_id]
+        if message.root_id:
+            root_cache[message.message_id] = message.root_id
+            return message.root_id
+        parent_id = message.parent_id
+        visited = {message.message_id}
+        while parent_id and parent_id not in visited:
+            visited.add(parent_id)
+            parent = by_id.get(parent_id)
+            if parent is None:
+                root_cache[message.message_id] = parent_id
+                return parent_id
+            if parent.root_id:
+                root_cache[message.message_id] = parent.root_id
+                return parent.root_id
+            parent_id = parent.parent_id
+        if message.parent_id:
+            root_cache[message.message_id] = message.parent_id
+            return message.parent_id
+        root_cache[message.message_id] = None
+        return None
+
+    thread_groups: dict[tuple[str, str], list[FeishuChatMessage]] = {}
+    standalone: list[FeishuChatMessage] = []
+    for message in messages:
+        root = resolve_root(message)
+        if root:
+            thread_groups.setdefault((message.chat_id, root), []).append(message)
+        else:
+            standalone.append(message)
+
+    grouped_ids = {message.message_id for group in thread_groups.values() for message in group}
+    for (chat_id, root), group in thread_groups.items():
+        root_message = by_id.get(root)
+        if root_message is not None and root_message.message_id not in grouped_ids and root_message.chat_id == chat_id:
+            group.append(root_message)
+            grouped_ids.add(root_message.message_id)
+    standalone = [message for message in standalone if message.message_id not in grouped_ids]
+
+    output = [
+        sorted(group, key=_message_sort_key)
+        for group in thread_groups.values()
+    ]
+    output.extend(_message_windows(standalone))
+    output.sort(key=lambda group: _message_sort_key(group[0]))
+    return output
+
+
+def _record_to_chat_message(record) -> FeishuChatMessage:
+    return FeishuChatMessage(
+        message_id=record.message_id,
+        chat_id=record.chat_id,
+        chat_name=record.chat_name,
+        sender_open_id=record.sender_open_id or "unknown",
+        sender_name=record.sender_name,
+        sender_type=None,
+        text=record.raw_text,
+        sent_at=record.sent_at,
+        root_id=record.root_id,
+        parent_id=record.parent_id,
+    )
+
+
+def _with_chat_name(message: FeishuChatMessage, chat_name: str | None) -> FeishuChatMessage:
+    if message.chat_name or not chat_name:
+        return message
+    return FeishuChatMessage(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        sender_open_id=message.sender_open_id,
+        sender_name=message.sender_name,
+        sender_type=message.sender_type,
+        text=message.text,
+        sent_at=message.sent_at,
+        chat_name=chat_name,
+        root_id=message.root_id,
+        parent_id=message.parent_id,
+    )
+
+
+def _message_sort_key(message: FeishuChatMessage):
+    value = message.sent_at or datetime.min.replace(tzinfo=timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (value, message.message_id)
 
 
 def _window_preview(messages: list[FeishuChatMessage]) -> str:

@@ -16,7 +16,7 @@ from app.models.post import FeishuImportedMessageModel, PostModel, UserModel, Vo
 from app.repositories.posts import DEFAULT_TENANT_ID, PostsRepository, seed_default_data
 from app.schemas.ai import FeishuRequirementDraft, SuggestionDraftResponse
 from app.schemas.post import PostCreate
-from app.services.feishu_import import FeishuRequirementImportService, _content_preview
+from app.services.feishu_import import FeishuRequirementImportService, _content_preview, _thread_first_windows
 
 
 def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,6 +40,61 @@ def test_import_creates_new_requirement(monkeypatch: pytest.MonkeyPatch) -> None
     assert record is not None
     assert record.status == "created"
     assert record.post_id == post.id
+
+
+def test_thread_grouping_precedes_time_windows_and_follows_parent_chain() -> None:
+    now = datetime.now(timezone.utc)
+    root = _message("om_root", sent_at=now)
+    reply = _message("om_reply", sent_at=now + timedelta(hours=3), root_id="om_root", parent_id="om_root")
+    nested = _message("om_nested", sent_at=now + timedelta(hours=5), parent_id="om_reply")
+    standalone = _message("om_standalone", sent_at=now + timedelta(minutes=10))
+
+    groups = _thread_first_windows([nested, standalone, reply, root])
+
+    assert [message.message_id for message in groups[0]] == ["om_root", "om_reply", "om_nested"]
+    assert [message.message_id for message in groups[1]] == ["om_standalone"]
+
+
+def test_post_sources_include_thread_context_and_mark_direct_messages() -> None:
+    session = _session()
+    repository = PostsRepository(session)
+    actor = _add_user(session, "source-user", "ou_source")
+    post = repository.create_post(
+        PostCreate(title="Trace source", description="Keep the original discussion", tags=[]),
+        actor,
+    )
+    now = datetime.now(timezone.utc)
+    repository.record_feishu_import(
+        message_id="om_root",
+        chat_id="oc_source",
+        chat_name="Product Group",
+        sender_open_id="ou_source",
+        sender_name="Alice",
+        sent_at=now,
+        raw_text="The page is slow.",
+        status="skipped",
+    )
+    repository.record_feishu_import(
+        message_id="om_reply",
+        chat_id="oc_source",
+        chat_name="Product Group",
+        root_id="om_root",
+        parent_id="om_root",
+        sender_open_id="ou_other",
+        sender_name="Bob",
+        sent_at=now + timedelta(minutes=5),
+        raw_text="It takes more than ten seconds.",
+        status="created",
+        post_id=post.id,
+        is_direct_source=True,
+    )
+
+    sources = repository.get_post_sources(post.id)
+
+    assert len(sources.groups) == 1
+    assert sources.groups[0].kind == "thread"
+    assert [message.message_id for message in sources.groups[0].messages] == ["om_root", "om_reply"]
+    assert [message.is_direct_source for message in sources.groups[0].messages] == [False, True]
 
 
 def test_import_skips_previously_processed_message(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -746,6 +801,8 @@ def _message(
     sender_type: str = "user",
     text: str = "Need department export for vote results so teams can review priorities.",
     sent_at: datetime | None = None,
+    root_id: str | None = None,
+    parent_id: str | None = None,
 ) -> FeishuChatMessage:
     return FeishuChatMessage(
         message_id=message_id,
@@ -755,6 +812,8 @@ def _message(
         sender_type=sender_type,
         text=text,
         sent_at=sent_at,
+        root_id=root_id,
+        parent_id=parent_id,
     )
 
 

@@ -323,6 +323,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
             onEdit={setEditingItem}
             canEdit={Boolean(currentUser)}
             canManage={Boolean(currentUser)}
+            canViewSources={Boolean(currentUser)}
           />
         </div>
       </section>

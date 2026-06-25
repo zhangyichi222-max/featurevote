@@ -9,6 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.routes.ai import router as ai_router
 from app.clients.deepseek import DeepSeekSuggestionClient
+from app.clients.ollama import OllamaEmbeddingClient
+from app.clients.qdrant import QdrantClient
 from app.core.config import settings
 from app.core.security import create_session_token
 from app.db.base import Base
@@ -173,6 +175,37 @@ def test_similar_requirements_can_use_deepseek_enhancement(
     assert item["similarity"] == 0.91
     assert item["is_high_confidence"] is True
     assert item["reason"] == "Both ask for department-level vote exports."
+
+
+def test_similar_requirements_uses_vector_candidates_before_llm(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def ensure_collection(self) -> None:
+        _ = self
+
+    async def embed(self, text: str) -> list[float]:
+        _ = self, text
+        return [0.1] * settings.ollama_embedding_dimensions
+
+    async def search(self, vector: list[float], limit: int) -> list[tuple[str, float]]:
+        _ = self, vector, limit
+        return [("export-post", 0.95)]
+
+    monkeypatch.setattr(QdrantClient, "ensure_collection", ensure_collection)
+    monkeypatch.setattr(QdrantClient, "search", search)
+    monkeypatch.setattr(OllamaEmbeddingClient, "embed", embed)
+
+    response = client.post(
+        "/api/v1/ai/similar-requirements",
+        json={"title": "导出各部门投票", "description": "需要下载按部门汇总的数据"},
+        cookies=_cookies("normal-user"),
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == "export-post"
+    assert response.json()["items"][0]["similarity"] >= 0.6
 
 
 def _cookies(user_id: str) -> dict[str, str]:

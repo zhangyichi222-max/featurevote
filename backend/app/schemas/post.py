@@ -41,6 +41,31 @@ class LinkedTaskItem(BaseModel):
     status: str
 
 
+class PostSourceMessageItem(BaseModel):
+    message_id: str
+    chat_id: str
+    chat_name: str
+    sender_open_id: str | None = None
+    sender_name: str | None = None
+    sent_at: datetime | None = None
+    root_id: str | None = None
+    parent_id: str | None = None
+    raw_text: str
+    is_direct_source: bool
+
+
+class PostSourceGroupItem(BaseModel):
+    key: str
+    kind: Literal["thread", "window"]
+    chat_id: str
+    chat_name: str
+    messages: list[PostSourceMessageItem]
+
+
+class PostSourcesResponse(BaseModel):
+    groups: list[PostSourceGroupItem]
+
+
 class PostItem(BaseModel):
     id: str
     number: int

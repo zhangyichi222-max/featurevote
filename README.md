@@ -134,4 +134,17 @@ python scripts/import_feishu_messages.py --watch --interval 60
 
 Admins can also trigger one import pass with `POST /api/v1/feishu-import/run`.
 
+Replies are grouped by Feishu `root_id`/`parent_id` before the time-window fallback.
+Requirement drafts are embedded with Ollama `bge-m3` and indexed in Qdrant for
+semantic duplicate retrieval. Qdrant is a rebuildable index; MySQL remains the
+source of truth. Rebuild the index manually with:
+
+```bash
+cd backend
+python scripts/rebuild_requirement_embeddings.py
+```
+
+Logged-in members can inspect the original Feishu discussion through the draft
+detail panel. The source endpoint is `GET /api/v1/posts/{post_id}/sources`.
+
 The existing `/posts`, requirement-oriented source directories, and database tables are retained as internal compatibility names. They represent requirement drafts in the product interface.

@@ -99,6 +99,22 @@ def test_anonymous_can_read_but_cannot_write(client: TestClient) -> None:
     assert current.json()["user"] == {"id": "normal-user", "name": "Normal User"}
 
 
+def test_post_sources_require_login_and_return_empty_for_manual_draft(client: TestClient) -> None:
+    headers = {"Origin": "http://localhost:5173"}
+    created = client.post(
+        "/api/v1/posts",
+        json={"title": "Manual draft", "description": "No Feishu source", "tags": []},
+        cookies=_cookies("normal-user"),
+        headers=headers,
+    )
+    post_id = created.json()["id"]
+
+    assert client.get(f"/api/v1/posts/{post_id}/sources").status_code == 401
+    response = client.get(f"/api/v1/posts/{post_id}/sources", cookies=_cookies("other-user"))
+    assert response.status_code == 200
+    assert response.json() == {"groups": []}
+
+
 def test_posts_use_database_pagination_with_stable_order(client: TestClient) -> None:
     headers = {"Origin": "http://localhost:5173"}
     cookies = _cookies("normal-user")

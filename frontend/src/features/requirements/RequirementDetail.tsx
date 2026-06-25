@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
+
 import { RichContentPreview } from "../rich-content/RichContentEditor";
-import type { Requirement } from "../../types/requirement";
+import type { Requirement, RequirementSourceGroup } from "../../types/requirement";
+import { fetchRequirementSources } from "./api";
 
 export function RequirementDetail({
   item,
@@ -10,6 +13,7 @@ export function RequirementDetail({
   onEdit,
   canEdit,
   canManage,
+  canViewSources,
 }: {
   item: Requirement | null;
   isBusy: boolean;
@@ -19,7 +23,37 @@ export function RequirementDetail({
   onEdit: (item: Requirement) => void;
   canEdit: boolean;
   canManage: boolean;
+  canViewSources: boolean;
 }) {
+  const [sourceGroups, setSourceGroups] = useState<RequirementSourceGroup[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [sourcesError, setSourcesError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setSourceGroups([]);
+    setSourcesError("");
+    if (!item || !canViewSources) {
+      return () => {
+        active = false;
+      };
+    }
+    setSourcesLoading(true);
+    fetchRequirementSources(item.id)
+      .then((response) => {
+        if (active) setSourceGroups(response.groups);
+      })
+      .catch(() => {
+        if (active) setSourcesError("飞书来源加载失败，请稍后重试。");
+      })
+      .finally(() => {
+        if (active) setSourcesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [item?.id, canViewSources]);
+
   if (!item) {
     return (
       <aside className="requirement-detail requirement-detail-empty">
@@ -84,7 +118,47 @@ export function RequirementDetail({
         <h4>描述</h4>
         <RichContentPreview markdown={item.description || "暂无描述。"} />
       </section>
+      {canViewSources && (sourcesLoading || sourcesError || sourceGroups.length > 0) ? (
+        <details className="requirement-sources" open={sourceGroups.length > 0}>
+          <summary>
+            飞书来源
+            {sourceGroups.length ? <span>{sourceGroups.reduce((sum, group) => sum + group.messages.length, 0)} 条消息</span> : null}
+          </summary>
+          {sourcesLoading ? <p className="requirement-source-state">正在加载来源...</p> : null}
+          {sourcesError ? <p className="requirement-source-state error">{sourcesError}</p> : null}
+          {!sourcesLoading ? sourceGroups.map((group) => (
+            <section className="requirement-source-group" key={`${group.chat_id}:${group.key}`}>
+              <header>
+                <strong>{group.chat_name}</strong>
+                <span>{group.kind === "thread" ? "回复线程" : "时间窗口"}</span>
+              </header>
+              <div className="requirement-source-messages">
+                {group.messages.map((message) => (
+                  <article
+                    className={`requirement-source-message ${message.is_direct_source ? "direct" : ""}`}
+                    key={message.message_id}
+                  >
+                    <div>
+                      <strong>{message.sender_name || "未知成员"}</strong>
+                      <time>{formatSourceTime(message.sent_at)}</time>
+                      {message.is_direct_source ? <em>直接来源</em> : null}
+                    </div>
+                    <p>{message.raw_text}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )) : null}
+        </details>
+      ) : null}
     </aside>
   );
+}
+
+function formatSourceTime(value?: string | null) {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return date.toLocaleString("zh-CN", { hour12: false });
 }
 
