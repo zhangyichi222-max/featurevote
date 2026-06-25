@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError } from "../../api/client";
 import type { CurrentUser, Requirement, RequirementTag } from "../../types/requirement";
@@ -10,50 +10,118 @@ import { RequirementEditor } from "./RequirementEditor";
 import { RequirementTaskModal } from "./RequirementTaskModal";
 import type { SortMode } from "./constants";
 import { tagColors } from "./constants";
-import { normalize } from "./utils";
+
+const PAGE_SIZE = 20;
+
+function readListState() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedPage = Number.parseInt(params.get("page") ?? "1", 10);
+  const requestedSort = params.get("sort");
+  return {
+    page: Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    query: params.get("query") ?? "",
+    sortMode: requestedSort === "recent" || requestedSort === "newest" ? requestedSort : "popular" as SortMode,
+    label: params.get("label") ?? "",
+  };
+}
 
 export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: { currentUser: CurrentUser | null; isBusy: boolean; setIsBusy: (value: boolean) => void; setNotice: (value: string) => void; }) {
+  const initialListState = useMemo(readListState, []);
   const [items, setItems] = useState<Requirement[]>([]);
-  const [query, setQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("popular");
-  const [label, setLabel] = useState("");
+  const [query, setQuery] = useState(initialListState.query);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialListState.query);
+  const [sortMode, setSortMode] = useState<SortMode>(initialListState.sortMode);
+  const [label, setLabel] = useState(initialListState.label);
+  const [page, setPage] = useState(initialListState.page);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tags, setTags] = useState<RequirementTag[]>([]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Requirement | null>(null);
   const [conversionItem, setConversionItem] = useState<Requirement | null>(null);
+  const requestSequence = useRef(0);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId],
   );
 
-  const visibleItems = useMemo(() => {
-    const keyword = normalize(query);
-    return items
-      .filter((item) => !label || item.tags.some((tag) => tag.slug === label))
-      .filter((item) => {
-        if (!keyword) {
-          return true;
-        }
-        return normalize(`${item.title} ${item.description} ${item.req_id} ${item.tags.map((tag) => tag.name).join(" ")}`).includes(keyword);
-      })
-      .sort((left, right) => {
-        if (sortMode === "popular") {
-          return right.vote_count - left.vote_count || right.updated_at.localeCompare(left.updated_at);
-        }
-        if (sortMode === "recent") {
-          return right.updated_at.localeCompare(left.updated_at);
-        }
-        return right.created_at.localeCompare(left.created_at);
-      });
-  }, [items, label, query, sortMode]);
+  function writeListState(
+    next: { page: number; query: string; sortMode: SortMode; label: string },
+    mode: "push" | "replace" = "replace",
+  ) {
+    const params = new URLSearchParams(window.location.search);
+    if (next.page > 1) params.set("page", String(next.page));
+    else params.delete("page");
+    if (next.query.trim()) params.set("query", next.query);
+    else params.delete("query");
+    if (next.sortMode !== "popular") params.set("sort", next.sortMode);
+    else params.delete("sort");
+    if (next.label) params.set("label", next.label);
+    else params.delete("label");
+    const search = params.toString();
+    window.history[mode === "push" ? "pushState" : "replaceState"](
+      null,
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}`,
+    );
+  }
 
-  async function loadRequirements() {
-    const data = await fetchRequirements();
+  function updatePage(nextPage: number) {
+    if (nextPage < 1 || (totalPages && nextPage > totalPages)) {
+      return;
+    }
+    setPage(nextPage);
+    setSelectedId(null);
+    writeListState({ page: nextPage, query, sortMode, label }, "push");
+  }
+
+  function updateQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    setPage(1);
+    setSelectedId(null);
+    writeListState({ page: 1, query: nextQuery, sortMode, label });
+  }
+
+  function updateSortMode(nextSort: SortMode) {
+    setSortMode(nextSort);
+    setPage(1);
+    setSelectedId(null);
+    writeListState({ page: 1, query, sortMode: nextSort, label }, "push");
+  }
+
+  function updateLabel(nextLabel: string) {
+    setLabel(nextLabel);
+    setPage(1);
+    setSelectedId(null);
+    writeListState({ page: 1, query, sortMode, label: nextLabel }, "push");
+  }
+
+  async function loadRequirements(requestedPage = page) {
+    const requestId = ++requestSequence.current;
+    const data = await fetchRequirements({
+      page: requestedPage,
+      pageSize: PAGE_SIZE,
+      query: debouncedQuery,
+      sort: sortMode,
+      label,
+    });
+    if (requestId !== requestSequence.current) {
+      return false;
+    }
+    const lastAvailablePage = Math.max(1, data.total_pages);
+    if (requestedPage > lastAvailablePage) {
+      setPage(lastAvailablePage);
+      writeListState({ page: lastAvailablePage, query, sortMode, label });
+      return false;
+    }
     setItems(data.items);
+    setTotal(data.total);
+    setTotalPages(data.total_pages);
     setSelectedId((current) => current && data.items.some((item) => item.id === current) ? current : null);
     setNotice("");
+    return true;
   }
 
   async function loadTags() {
@@ -62,8 +130,30 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
   }
 
   useEffect(() => {
-    loadRequirements().catch((error: Error) => setNotice(error.message));
     loadTags().catch((error: Error) => setNotice(error.message));
+  }, []);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(timerId);
+  }, [query]);
+
+  useEffect(() => {
+    loadRequirements().catch((error: Error) => setNotice(error.message));
+  }, [debouncedQuery, label, page, sortMode]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const next = readListState();
+      setPage(next.page);
+      setQuery(next.query);
+      setDebouncedQuery(next.query);
+      setSortMode(next.sortMode);
+      setLabel(next.label);
+      setSelectedId(null);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   function requireLogin(action: string) {
@@ -83,7 +173,11 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
       await createRequirement(payload);
       setNotice("需求草稿已提交。");
       setIsComposerOpen(false);
-      await loadRequirements();
+      if (page !== 1) {
+        updatePage(1);
+      } else {
+        await loadRequirements(1);
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "需求草稿提交失败。");
       throw error;
@@ -107,7 +201,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
     setIsBusy(true);
     try {
       await updateRequirement(editingItem.id, payload);
-      await loadRequirements();
+      await loadRequirements(page);
       setEditingItem(null);
       setNotice("需求草稿已更新。");
     } catch (error) {
@@ -126,7 +220,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
     try {
       await voteRequirement(requirementId);
       setNotice("投票已记录。");
-      await loadRequirements();
+      await loadRequirements(page);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "投票失败。");
     } finally {
@@ -149,7 +243,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
       setNotice(`已采纳需求草稿并创建 TASK-${result.task.number}。`);
       setConversionItem(null);
       setSelectedId(null);
-      await loadRequirements();
+      await loadRequirements(page);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "采纳并创建任务失败。");
       throw error;
@@ -170,7 +264,7 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
       await archiveRequirement(requirementId);
       setSelectedId(null);
       setNotice("需求草稿已删除。");
-      await loadRequirements();
+      await loadRequirements(page);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "删除失败。");
     } finally {
@@ -203,14 +297,19 @@ export function RequirementPage({ currentUser, isBusy, setIsBusy, setNotice }: {
           sortMode={sortMode}
           label={label}
           labels={tags}
-          onQueryChange={setQuery}
-          onSortChange={setSortMode}
-          onLabelChange={setLabel}
+          onQueryChange={updateQuery}
+          onSortChange={updateSortMode}
+          onLabelChange={updateLabel}
         />
         <div className="requirement-layout">
           <RequirementBoard
-            items={visibleItems}
+            items={items}
             selectedItem={selectedItem}
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={updatePage}
             onSelect={(item) => setSelectedId(item.id)}
             onVote={handleVote}
             canWrite={Boolean(currentUser)}

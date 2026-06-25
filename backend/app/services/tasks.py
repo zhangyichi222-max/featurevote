@@ -36,9 +36,23 @@ class TasksService:
         statuses: list[str] | None = None,
         assignee_id: str = "",
         labels: list[str] | None = None,
+        page: int = 1,
+        page_size: int = 20,
     ) -> TaskListResponse:
+        items, total = self.repository.list_tasks(
+            query=query,
+            statuses=statuses,
+            assignee_id=assignee_id,
+            labels=labels,
+            page=page,
+            page_size=page_size,
+        )
         return TaskListResponse(
-            items=self.repository.list_tasks(query=query, statuses=statuses, assignee_id=assignee_id, labels=labels)
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=(total + page_size - 1) // page_size,
         )
 
     async def get_task(self, task_id: str) -> TaskItem:

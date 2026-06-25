@@ -13,10 +13,15 @@ export async function fetchTasks(filters: {
   status?: TaskStatus | "all";
   assigneeId?: string;
   label?: string;
+  page?: number;
+  pageSize?: number;
 } = {}) {
-  const params = new URLSearchParams();
-  if (filters.query) {
-    params.set("query", filters.query);
+  const params = new URLSearchParams({
+    page: String(filters.page ?? 1),
+    page_size: String(filters.pageSize ?? 20),
+  });
+  if (filters.query?.trim()) {
+    params.set("query", filters.query.trim());
   }
   if (filters.status && filters.status !== "all") {
     params.append("statuses", filters.status);
@@ -62,4 +67,3 @@ export async function fetchTaskAssignees() {
 export async function uploadTaskImage(file: File) {
   return apiClient.upload<{ url: string }>("/task-assets/images", file);
 }
-

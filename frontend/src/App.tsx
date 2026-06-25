@@ -41,6 +41,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      setActiveView(params.get("view") === "tasks" ? "tasks" : "requirements");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
     if (!currentUser) {
       return;
     }
@@ -96,6 +105,19 @@ export default function App() {
     }
   }
 
+  function handleViewChange(view: AppView) {
+    const params = new URLSearchParams(window.location.search);
+    if (view === "tasks") {
+      params.set("view", "tasks");
+    } else {
+      params.delete("view");
+      params.delete("task");
+    }
+    const nextSearch = params.toString();
+    window.history.pushState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+    setActiveView(view);
+  }
+
   return (
     <main className="app-shell">
       <Header
@@ -105,7 +127,7 @@ export default function App() {
         onLogin={startFeishuBrowserLogin}
         onLogout={handleLogout}
       />
-      <ViewSwitcher activeView={activeView} onChange={setActiveView} />
+      <ViewSwitcher activeView={activeView} onChange={handleViewChange} />
       {notice ? <div className="app-toast" role="status">{notice}</div> : null}
       {activeView === "tasks" ? (
         <TaskPage currentUser={currentUser} />

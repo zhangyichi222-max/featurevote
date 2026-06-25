@@ -23,29 +23,48 @@ class TasksRepository:
         statuses: list[str] | None = None,
         assignee_id: str = "",
         labels: list[str] | None = None,
-    ) -> list[TaskItem]:
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[TaskItem], int]:
         statement = self._task_select()
+        count_statement = select(func.count(TaskModel.id)).where(TaskModel.archived_at.is_(None))
 
         if statuses:
-            statement = statement.where(TaskModel.status.in_(statuses))
+            status_filter = TaskModel.status.in_(statuses)
+            statement = statement.where(status_filter)
+            count_statement = count_statement.where(status_filter)
 
         if assignee_id:
-            statement = statement.where(TaskModel.assignee_user_id == assignee_id)
+            assignee_filter = TaskModel.assignee_user_id == assignee_id
+            statement = statement.where(assignee_filter)
+            count_statement = count_statement.where(assignee_filter)
 
         if query:
-            term = f"%{query.strip().lower()}%"
-            statement = statement.where(
-                or_(
-                    func.lower(TaskModel.title).like(term),
-                    func.lower(TaskModel.description_markdown).like(term),
-                )
-            )
+            cleaned_query = query.strip().lower()
+            term = f"%{cleaned_query}%"
+            query_conditions = [
+                func.lower(TaskModel.title).like(term),
+                func.lower(TaskModel.description_markdown).like(term),
+            ]
+            if cleaned_query.startswith("task-") and cleaned_query[5:].isdigit():
+                query_conditions.append(TaskModel.number == int(cleaned_query[5:]))
+            query_filter = or_(*query_conditions)
+            statement = statement.where(query_filter)
+            count_statement = count_statement.where(query_filter)
 
         if labels:
-            statement = statement.join(TaskModel.labels).where(TagModel.slug.in_(labels))
+            label_filter = TaskModel.labels.any(TagModel.slug.in_(labels))
+            statement = statement.where(label_filter)
+            count_statement = count_statement.where(label_filter)
 
-        records = self.session.scalars(statement.order_by(TaskModel.updated_at.desc())).unique().all()
-        return [self._to_task_item(record) for record in records]
+        total = int(self.session.scalar(count_statement) or 0)
+        records = self.session.scalars(
+            statement
+            .order_by(TaskModel.updated_at.desc(), TaskModel.number.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).unique().all()
+        return [self._to_task_item(record) for record in records], total
 
     def get_task(self, task_id: str) -> TaskItem | None:
         task = self.get_task_model(task_id)

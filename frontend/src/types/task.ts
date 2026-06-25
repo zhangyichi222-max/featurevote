@@ -31,6 +31,10 @@ export interface TaskItem {
 
 export interface TaskListResponse {
   items: TaskItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface TaskLabelListResponse {
@@ -48,4 +52,3 @@ export interface TaskPayload {
   assignee_user_id: string | null;
   labels: string[];
 }
-

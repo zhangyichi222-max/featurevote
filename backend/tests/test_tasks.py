@@ -74,10 +74,69 @@ def test_task_filters_by_status_assignee_label_and_query() -> None:
     repo.create_task(TaskCreate(title="Frontend polish", assignee_user_id=dev.id, status="blocked", labels=["UI"]), actor)
     repo.create_task(TaskCreate(title="Backend cleanup", status="todo", labels=["API"]), actor)
 
-    results = repo.list_tasks(query="front", statuses=["blocked"], assignee_id=dev.id, labels=["ui"])
+    results, total = repo.list_tasks(query="front", statuses=["blocked"], assignee_id=dev.id, labels=["ui"])
 
+    assert total == 1
     assert len(results) == 1
     assert results[0].title == "Frontend polish"
+
+
+def test_task_pagination_is_stable_and_returns_total() -> None:
+    session = make_session()
+    actor = _add_user(session, "actor", "ou_actor")
+    repo = TasksRepository(session)
+    created_ids = [
+        repo.create_task(TaskCreate(title=f"Task {index:02d}"), actor).id
+        for index in range(25)
+    ]
+
+    first, total = repo.list_tasks(page=1, page_size=10)
+    second, second_total = repo.list_tasks(page=2, page_size=10)
+    last, last_total = repo.list_tasks(page=3, page_size=10)
+
+    assert total == second_total == last_total == 25
+    assert [item.id for item in first] == list(reversed(created_ids[-10:]))
+    assert [item.id for item in second] == list(reversed(created_ids[5:15]))
+    assert [item.id for item in last] == list(reversed(created_ids[:5]))
+    all_ids = [item.id for page_items in (first, second, last) for item in page_items]
+    assert len(all_ids) == len(set(all_ids)) == 25
+
+
+def test_task_pagination_filters_before_counting_and_supports_task_number_search() -> None:
+    session = make_session()
+    actor = _add_user(session, "actor", "ou_actor")
+    dev = _add_user(session, "dev", "ou_dev")
+    repo = TasksRepository(session)
+    target = repo.create_task(
+        TaskCreate(title="Target frontend", assignee_user_id=dev.id, status="blocked", labels=["UI", "Shared"]),
+        actor,
+    )
+    repo.create_task(TaskCreate(title="Target backend", status="blocked", labels=["API"]), actor)
+    repo.create_task(TaskCreate(title="Other frontend", assignee_user_id=dev.id, status="todo", labels=["UI"]), actor)
+
+    results, total = repo.list_tasks(
+        query=f"TASK-{target.number}",
+        statuses=["blocked"],
+        assignee_id=dev.id,
+        labels=["ui", "shared"],
+        page=1,
+        page_size=1,
+    )
+
+    assert total == 1
+    assert [item.id for item in results] == [target.id]
+
+
+def test_task_pagination_allows_empty_overflow_page() -> None:
+    session = make_session()
+    actor = _add_user(session, "actor", "ou_actor")
+    repo = TasksRepository(session)
+    repo.create_task(TaskCreate(title="Only task"), actor)
+
+    results, total = repo.list_tasks(page=9, page_size=20)
+
+    assert total == 1
+    assert results == []
 
 
 def test_create_task_rejects_missing_assignee() -> None:
@@ -258,7 +317,9 @@ def test_convert_post_to_task_is_idempotent_and_archives_source_post() -> None:
     assert task.source_post.id == post.id
     assert session.get(PostModel, post.id).archived_at is not None
     assert session.get(PostModel, post.id).archived_by_user_id == actor.id
-    assert len(repo.list_tasks()) == 1
+    tasks, total = repo.list_tasks()
+    assert total == 1
+    assert len(tasks) == 1
 
 
 def test_task_status_changes_do_not_modify_archived_source_post() -> None:

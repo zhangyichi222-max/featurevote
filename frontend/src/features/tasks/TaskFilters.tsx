@@ -9,7 +9,6 @@ export function TaskFilters({
   label,
   labels,
   assignees,
-  counts,
   onQueryChange,
   onStatusChange,
   onAssigneeChange,
@@ -21,7 +20,6 @@ export function TaskFilters({
   label: string;
   labels: TaskLabel[];
   assignees: CurrentUser[];
-  counts: Record<string, number>;
   onQueryChange: (value: string) => void;
   onStatusChange: (value: TaskStatus | "all") => void;
   onAssigneeChange: (value: string) => void;
@@ -33,7 +31,7 @@ export function TaskFilters({
       <select value={status} onChange={(event) => onStatusChange(event.target.value as TaskStatus | "all")}>
         {statuses.map((item) => (
           <option key={item} value={item}>
-            {item === "all" ? "全部状态" : statusLabels[item]} {item !== "all" && counts[item] ? "(" + counts[item] + ")" : ""}
+            {item === "all" ? "全部状态" : statusLabels[item]}
           </option>
         ))}
       </select>

@@ -32,10 +32,37 @@ type CurrentUserResponse = {
 
 type PostListResponse = {
   items: PostItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 };
 
-export async function fetchRequirements() {
-  const data = await apiClient.get<PostListResponse>("/posts");
+export async function fetchRequirements({
+  page,
+  pageSize = 20,
+  query = "",
+  sort = "popular",
+  label = "",
+}: {
+  page: number;
+  pageSize?: number;
+  query?: string;
+  sort?: "popular" | "recent" | "newest";
+  label?: string;
+}) {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    view: sort === "popular" ? "trending" : sort,
+  });
+  if (query.trim()) {
+    params.set("query", query.trim());
+  }
+  if (label) {
+    params.append("tags", label);
+  }
+  const data = await apiClient.get<PostListResponse>(`/posts?${params.toString()}`);
   return {
     items: data.items.map((item) => ({
       id: item.id,
@@ -56,6 +83,10 @@ export async function fetchRequirements() {
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
+    total: data.total,
+    page: data.page,
+    page_size: data.page_size,
+    total_pages: data.total_pages,
   } satisfies RequirementListResponse;
 }
 

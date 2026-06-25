@@ -32,6 +32,10 @@ export interface Requirement {
 
 export interface RequirementListResponse {
   items: Requirement[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface SimilarRequirement {

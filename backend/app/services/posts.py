@@ -27,14 +27,23 @@ class PostsService:
         tags: list[str] | None = None,
         moderation: str = "",
         view: str = "trending",
+        page: int = 1,
+        page_size: int = 20,
     ) -> PostListResponse:
+        items, total = self.repository.list_posts(
+            query=query,
+            tags=tags,
+            moderation=moderation,
+            view=view,
+            page=page,
+            page_size=page_size,
+        )
         return PostListResponse(
-            items=self.repository.list_posts(
-                query=query,
-                tags=tags,
-                moderation=moderation,
-                view=view,
-            )
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=(total + page_size - 1) // page_size,
         )
 
     async def get_post(self, post_id: str) -> PostItem:

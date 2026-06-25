@@ -39,12 +39,22 @@ export function RequirementFilters({
 export function RequirementBoard({
   items,
   selectedItem,
+  page,
+  pageSize,
+  total,
+  totalPages,
+  onPageChange,
   onSelect,
   onVote,
   canWrite,
 }: {
   items: Requirement[];
   selectedItem: Requirement | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
   onSelect: (item: Requirement) => void;
   onVote: (id: string) => Promise<void>;
   canWrite: boolean;
@@ -75,8 +85,78 @@ export function RequirementBoard({
           </div>
         ) : null}
       </div>
+      <RequirementPagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+      />
     </div>
   );
+}
+
+function RequirementPagination({
+  page,
+  pageSize,
+  total,
+  totalPages,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (!total) {
+    return null;
+  }
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  const pageItems = paginationItems(page, totalPages);
+  return (
+    <div className="requirement-pagination">
+      <span>第 {start}–{end} 条，共 {total} 条</span>
+      <div className="requirement-pagination-actions">
+        <button type="button" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>上一页</button>
+        {pageItems.map((item) =>
+          typeof item === "number" ? (
+            <button
+              key={item}
+              className={item === page ? "active" : ""}
+              type="button"
+              onClick={() => onPageChange(item)}
+              aria-current={item === page ? "page" : undefined}
+            >
+              {item}
+            </button>
+          ) : <span key={item}>…</span>,
+        )}
+        <button type="button" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>下一页</button>
+      </div>
+    </div>
+  );
+}
+
+function paginationItems(page: number, totalPages: number): Array<number | string> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+  const items: Array<number | string> = [1];
+  if (page > 4) {
+    items.push("left-ellipsis");
+  }
+  const start = Math.max(2, page - 1);
+  const end = Math.min(totalPages - 1, page + 1);
+  for (let current = start; current <= end; current += 1) {
+    items.push(current);
+  }
+  if (page < totalPages - 3) {
+    items.push("right-ellipsis");
+  }
+  items.push(totalPages);
+  return items;
 }
 
 function RequirementListItem({

@@ -71,39 +71,55 @@ class PostsRepository:
         tags: list[str] | None = None,
         moderation: str = "",
         view: str = "trending",
-    ) -> list[PostItem]:
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[PostItem], int]:
         statement = self._post_select()
+        count_statement = select(func.count(PostModel.id)).where(PostModel.archived_at.is_(None))
 
         if query:
-            term = f"%{query.strip().lower()}%"
-            statement = statement.where(
-                or_(
-                    func.lower(PostModel.title).like(term),
-                    func.lower(PostModel.description).like(term),
-                    func.lower(PostModel.slug).like(term),
-                )
-            )
+            cleaned_query = query.strip().lower()
+            term = f"%{cleaned_query}%"
+            query_conditions = [
+                func.lower(PostModel.title).like(term),
+                func.lower(PostModel.description).like(term),
+                func.lower(PostModel.slug).like(term),
+            ]
+            if cleaned_query.startswith("post-") and cleaned_query[5:].isdigit():
+                query_conditions.append(PostModel.number == int(cleaned_query[5:]))
+            query_filter = or_(*query_conditions)
+            statement = statement.where(query_filter)
+            count_statement = count_statement.where(query_filter)
 
         if tags:
-            statement = statement.join(PostModel.tags).where(TagModel.slug.in_(tags))
+            tag_filter = PostModel.tags.any(TagModel.slug.in_(tags))
+            statement = statement.where(tag_filter)
+            count_statement = count_statement.where(tag_filter)
 
         if moderation == "pending":
             statement = statement.where(PostModel.is_approved.is_(False))
+            count_statement = count_statement.where(PostModel.is_approved.is_(False))
         elif moderation == "approved":
             statement = statement.where(PostModel.is_approved.is_(True))
+            count_statement = count_statement.where(PostModel.is_approved.is_(True))
 
+        vote_count = (
+            select(func.count(VoteModel.id))
+            .where(VoteModel.post_id == PostModel.id)
+            .correlate(PostModel)
+            .scalar_subquery()
+        )
         if view == "newest":
-            statement = statement.order_by(PostModel.created_at.desc())
+            statement = statement.order_by(PostModel.created_at.desc(), PostModel.number.desc())
         elif view == "recent":
-            statement = statement.order_by(PostModel.updated_at.desc())
+            statement = statement.order_by(PostModel.updated_at.desc(), PostModel.number.desc())
         else:
-            statement = statement.order_by(PostModel.updated_at.desc())
+            statement = statement.order_by(vote_count.desc(), PostModel.updated_at.desc(), PostModel.number.desc())
 
+        total = int(self.session.scalar(count_statement) or 0)
+        statement = statement.offset((page - 1) * page_size).limit(page_size)
         posts = self.session.scalars(statement).unique().all()
-        result = [self._to_post_item(post) for post in posts]
-        if view == "trending":
-            return sorted(result, key=lambda item: (item.votes_count, item.updated_at), reverse=True)
-        return result
+        return [self._to_post_item(post) for post in posts], total
 
     def get_post(self, post_id: str) -> PostItem | None:
         post = self.session.scalars(self._post_select().where(PostModel.id == post_id)).first()

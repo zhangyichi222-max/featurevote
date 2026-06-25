@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CurrentUser } from "../../types/requirement";
 import type { TaskItem, TaskLabel, TaskPayload, TaskStatus } from "../../types/task";
@@ -19,25 +19,136 @@ import { TaskFilters } from "./TaskFilters";
 import { TaskList } from "./TaskList";
 import { TaskToolbar } from "./TaskToolbar";
 
+const PAGE_SIZE = 20;
+
+function readTaskListState() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedPage = Number.parseInt(params.get("task_page") ?? "1", 10);
+  const requestedStatus = params.get("task_status");
+  return {
+    page: Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    query: params.get("task_query") ?? "",
+    status: (
+      requestedStatus === "todo"
+      || requestedStatus === "in_progress"
+      || requestedStatus === "blocked"
+      || requestedStatus === "done"
+      || requestedStatus === "canceled"
+        ? requestedStatus
+        : "all"
+    ) as TaskStatus | "all",
+    assigneeId: params.get("task_assignee") ?? "",
+    label: params.get("task_label") ?? "",
+  };
+}
+
 export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
+  const initialListState = useRef(readTaskListState()).current;
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [labels, setLabels] = useState<TaskLabel[]>([]);
   const [assignees, setAssignees] = useState<CurrentUser[]>([]);
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<TaskStatus | "all">("all");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [label, setLabel] = useState("");
+  const [query, setQuery] = useState(initialListState.query);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialListState.query);
+  const [status, setStatus] = useState<TaskStatus | "all">(initialListState.status);
+  const [assigneeId, setAssigneeId] = useState(initialListState.assigneeId);
+  const [label, setLabel] = useState(initialListState.label);
+  const [page, setPage] = useState(initialListState.page);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const requestSequence = useRef(0);
 
-  async function loadTasks() {
-    const data = await fetchTasks({ query, status, assigneeId, label });
+  function writeTaskListState(
+    next: {
+      page: number;
+      query: string;
+      status: TaskStatus | "all";
+      assigneeId: string;
+      label: string;
+    },
+    mode: "push" | "replace" = "replace",
+  ) {
+    const params = new URLSearchParams(window.location.search);
+    if (next.page > 1) params.set("task_page", String(next.page));
+    else params.delete("task_page");
+    if (next.query.trim()) params.set("task_query", next.query);
+    else params.delete("task_query");
+    if (next.status !== "all") params.set("task_status", next.status);
+    else params.delete("task_status");
+    if (next.assigneeId) params.set("task_assignee", next.assigneeId);
+    else params.delete("task_assignee");
+    if (next.label) params.set("task_label", next.label);
+    else params.delete("task_label");
+    const search = params.toString();
+    window.history[mode === "push" ? "pushState" : "replaceState"](
+      null,
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}`,
+    );
+  }
+
+  function updatePage(nextPage: number) {
+    if (nextPage < 1 || (totalPages && nextPage > totalPages)) return;
+    setPage(nextPage);
+    setSelectedTask(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("task");
+    window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+    writeTaskListState({ page: nextPage, query, status, assigneeId, label }, "push");
+  }
+
+  function updateQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    setPage(1);
+    setSelectedTask(null);
+    writeTaskListState({ page: 1, query: nextQuery, status, assigneeId, label });
+  }
+
+  function updateStatus(nextStatus: TaskStatus | "all") {
+    setStatus(nextStatus);
+    setPage(1);
+    setSelectedTask(null);
+    writeTaskListState({ page: 1, query, status: nextStatus, assigneeId, label }, "push");
+  }
+
+  function updateAssignee(nextAssigneeId: string) {
+    setAssigneeId(nextAssigneeId);
+    setPage(1);
+    setSelectedTask(null);
+    writeTaskListState({ page: 1, query, status, assigneeId: nextAssigneeId, label }, "push");
+  }
+
+  function updateLabel(nextLabel: string) {
+    setLabel(nextLabel);
+    setPage(1);
+    setSelectedTask(null);
+    writeTaskListState({ page: 1, query, status, assigneeId, label: nextLabel }, "push");
+  }
+
+  async function loadTasks(requestedPage = page) {
+    const requestId = ++requestSequence.current;
+    const data = await fetchTasks({
+      query: debouncedQuery,
+      status,
+      assigneeId,
+      label,
+      page: requestedPage,
+      pageSize: PAGE_SIZE,
+    });
+    if (requestId !== requestSequence.current) return false;
+    const lastAvailablePage = Math.max(1, data.total_pages);
+    if (requestedPage > lastAvailablePage) {
+      setPage(lastAvailablePage);
+      writeTaskListState({ page: lastAvailablePage, query, status, assigneeId, label });
+      return false;
+    }
     setTasks(data.items);
-    setLabels((current) => mergeTaskLabels(current, data.items));
-    setAssignees((current) => mergeTaskAssignees(current, data.items));
+    setTotal(data.total);
+    setTotalPages(data.total_pages);
     setSelectedTask((current) => {
       const targetId = new URLSearchParams(window.location.search).get("task");
       if (targetId) {
@@ -45,6 +156,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       }
       return current ? data.items.find((item) => item.id === current.id) ?? null : current;
     });
+    return true;
   }
 
   async function loadMeta() {
@@ -65,15 +177,28 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
   }, []);
 
   useEffect(() => {
-    loadTasks().catch((error: Error) => setNotice(error.message));
-  }, [assigneeId, label, query, status]);
+    const timerId = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(timerId);
+  }, [query]);
 
-  const counts = useMemo(() => {
-    return tasks.reduce<Record<string, number>>((result, task) => {
-      result[task.status] = (result[task.status] ?? 0) + 1;
-      return result;
-    }, {});
-  }, [tasks]);
+  useEffect(() => {
+    loadTasks().catch((error: Error) => setNotice(error.message));
+  }, [assigneeId, debouncedQuery, label, page, status]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const next = readTaskListState();
+      setPage(next.page);
+      setQuery(next.query);
+      setDebouncedQuery(next.query);
+      setStatus(next.status);
+      setAssigneeId(next.assigneeId);
+      setLabel(next.label);
+      setSelectedTask(null);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   async function handleSave(payload: TaskPayload) {
     setIsBusy(true);
@@ -87,8 +212,12 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
       }
       setIsEditorOpen(false);
       setEditingTask(null);
-      await loadTasks();
       await loadMeta();
+      if (!editingTask && page !== 1) {
+        updatePage(1);
+      } else {
+        await loadTasks(editingTask ? page : 1);
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "任务保存失败。");
       throw error;
@@ -101,7 +230,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
     setIsBusy(true);
     try {
       await updateTask(task.id, { status: nextStatus });
-      await loadTasks();
+      await loadTasks(page);
       setNotice("状态已更新。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "状态更新失败。");
@@ -123,7 +252,7 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
         window.history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`);
       }
       setSelectedTask(null);
-      await loadTasks();
+      await loadTasks(page);
       setNotice("任务已删除。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "任务删除失败。");
@@ -148,15 +277,23 @@ export function TaskPage({ currentUser }: { currentUser: CurrentUser | null }) {
         label={label}
         labels={labels}
         assignees={assignees}
-        counts={counts}
-        onQueryChange={setQuery}
-        onStatusChange={setStatus}
-        onAssigneeChange={setAssigneeId}
-        onLabelChange={setLabel}
+        onQueryChange={updateQuery}
+        onStatusChange={updateStatus}
+        onAssigneeChange={updateAssignee}
+        onLabelChange={updateLabel}
       />
 
       <div className="task-layout">
-        <TaskList tasks={tasks} selectedTask={selectedTask} onSelect={setSelectedTask} />
+        <TaskList
+          tasks={tasks}
+          selectedTask={selectedTask}
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          totalPages={totalPages}
+          onPageChange={updatePage}
+          onSelect={setSelectedTask}
+        />
 
         <TaskDetail
           task={selectedTask}

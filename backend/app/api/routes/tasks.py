@@ -29,11 +29,20 @@ async def list_tasks(
     statuses: list[str] | None = Query(default=None),
     assignee_id: str = "",
     labels: list[str] | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     service: TasksService = Depends(get_tasks_service),
     user: UserModel = Depends(require_current_user),
 ) -> TaskListResponse:
     _ = user
-    return await service.list_tasks(query=query, statuses=statuses, assignee_id=assignee_id, labels=labels)
+    return await service.list_tasks(
+        query=query,
+        statuses=statuses,
+        assignee_id=assignee_id,
+        labels=labels,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=TaskItem, dependencies=[Depends(require_mutating_origin)])

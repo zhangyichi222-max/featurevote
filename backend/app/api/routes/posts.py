@@ -29,9 +29,18 @@ async def list_posts(
     tags: list[str] | None = Query(default=None),
     moderation: str = "",
     view: str = "trending",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     service: PostsService = Depends(get_posts_service),
 ) -> PostListResponse:
-    return await service.list_posts(query=query, tags=tags, moderation=moderation, view=view)
+    return await service.list_posts(
+        query=query,
+        tags=tags,
+        moderation=moderation,
+        view=view,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=PostItem, dependencies=[Depends(require_mutating_origin)])

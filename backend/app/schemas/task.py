@@ -40,6 +40,10 @@ class TaskItem(BaseModel):
 
 class TaskListResponse(BaseModel):
     items: list[TaskItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class TaskCreate(BaseModel):
